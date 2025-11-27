@@ -1,335 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client"
-      }
-    }
-  </script>
-  <script type="module" src="./script.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garden of the Held Breath</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a1a1a; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        #ui-layer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            z-index: 10;
+        }
+        #breath-instruction { font-size: 1.5rem; letter-spacing: 2px; opacity: 0.8; transition: opacity 0.5s; margin-bottom: 20px; }
+        #zen-counter {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255,255,255,0.4);
+            font-size: 0.9rem;
+            pointer-events: none;
+        }
+        .guide-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            opacity: 0.3;
+            box-shadow: 0 0 20px rgba(255,255,255,0.2);
+            transition: border-color 0.3s;
+        }
+        #start-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+            cursor: pointer;
+            flex-direction: column;
+        }
+        h1 { margin-bottom: 10px; font-weight: 100; letter-spacing: 5px; text-align: center; }
+        p { opacity: 0.7; text-align: center; }
+    </style>
 </head>
+<body>
 
-import React, { useState, useEffect } from 'react';
-import { Shield, Bug, Trophy, AlertTriangle, Activity, CheckCircle } from 'lucide-react';
+    <div id="start-overlay">
+        <h1>BREATH GARDEN</h1>
+        <p>[ Click or Tap anywhere to Enter & Enable Sound ]<br><br>Hold SPACE (or touch) to Inhale<br>Release to Exhale</p>
+    </div>
 
-// --- Constants & Config ---
-const BOARD_SIZE = 10;
-const MINE_COUNT = 15;
-
-// Directions for neighbor checking
-const DIRECTIONS = [
-  [-1, -1], [-1, 0], [-1, 1],
-  [0, -1],           [0, 1],
-  [1, -1],  [1, 0],  [1, 1],
-];
-
-const createBoard = (size, mines) => {
-  // Initialize empty board
-  const board = Array(size).fill(null).map(() => Array(size).fill({
-    isMine: false,
-    isRevealed: false,
-    isFlagged: false,
-    neighborCount: 0,
-  }));
-
-  // Place mines
-  let minesPlaced = 0;
-  while (minesPlaced < mines) {
-    const r = Math.floor(Math.random() * size);
-    const c = Math.floor(Math.random() * size);
-    if (!board[r][c].isMine) {
-      board[r][c] = { ...board[r][c], isMine: true };
-      minesPlaced++;
-    }
-  }
-
-  // Calculate neighbor counts
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (!board[r][c].isMine) {
-        let count = 0;
-        DIRECTIONS.forEach(([dr, dc]) => {
-          const nr = r + dr;
-          const nc = c + dc;
-          if (nr >= 0 && nr < size && nc >= 0 && nc < size && board[nr][nc].isMine) {
-            count++;
-          }
-        });
-        board[r][c] = { ...board[r][c], neighborCount: count };
-      }
-    }
-  }
-  return board;
-};
-
-// --- Main Game Component ---
-function EnterpriseSweeper() {
-  const [board, setBoard] = useState([]);
-  const [gameState, setGameState] = useState('idle'); // idle, playing, won, lost
-  const [flagsUsed, setFlagsUsed] = useState(0);
-  const [timeElapsed, setTimeElapsed] = useState(0);
-  const [efficiencyScore, setEfficiencyScore] = useState(100);
-
-  // Initialize game on load
-  useEffect(() => {
-    resetGame();
-  }, []);
-
-  // Timer logic
-  useEffect(() => {
-    let interval;
-    if (gameState === 'playing') {
-      interval = setInterval(() => {
-        setTimeElapsed((prev) => prev + 1);
-        // Decrease efficiency score over time to simulate "operational drag"
-        setEfficiencyScore((prev) => Math.max(0, prev - 0.1));
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [gameState]);
-
-  const resetGame = () => {
-    setBoard(createBoard(BOARD_SIZE, MINE_COUNT));
-    setGameState('playing');
-    setFlagsUsed(0);
-    setTimeElapsed(0);
-    setEfficiencyScore(100);
-  };
-
-  const handleCellClick = (r, c) => {
-    if (gameState !== 'playing' || board[r][c].isFlagged || board[r][c].isRevealed) return;
-
-    const newBoard = [...board.map(row => [...row])];
-    const cell = newBoard[r][c];
-
-    if (cell.isMine) {
-      // Game Over Logic
-      revealAllMines(newBoard);
-      setBoard(newBoard);
-      setGameState('lost');
-    } else {
-      // Reveal Logic
-      revealCellRecursive(newBoard, r, c);
-      setBoard(newBoard);
-      checkWinCondition(newBoard);
-    }
-  };
-
-  const handleRightClick = (e, r, c) => {
-    e.preventDefault();
-    if (gameState !== 'playing' || board[r][c].isRevealed) return;
-
-    const newBoard = [...board.map(row => [...row])];
-    const cell = newBoard[r][c];
-
-    // Toggle Flag
-    if (!cell.isFlagged && flagsUsed < MINE_COUNT) {
-      cell.isFlagged = true;
-      setFlagsUsed(prev => prev + 1);
-    } else if (cell.isFlagged) {
-      cell.isFlagged = false;
-      setFlagsUsed(prev => prev - 1);
-    }
+    <div id="ui-layer">
+        <div id="breath-instruction"></div>
+        <div class="guide-ring" id="guide-ring"></div>
+    </div>
     
-    setBoard(newBoard);
-  };
+    <div id="zen-counter">Zen State: 0%</div>
+    <div id="canvas-container"></div>
 
-  const revealCellRecursive = (currentBoard, r, c) => {
-    if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE || currentBoard[r][c].isRevealed || currentBoard[r][c].isFlagged) {
-      return;
-    }
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- RGBELoader is required for .hdr files -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
 
-    currentBoard[r][c].isRevealed = true;
+    <script>
+        // --- CONFIGURATION ---
+        const config = {
+            breathDuration: 10000, // 10 seconds full cycle (slow/deep)
+            zenRate: 0.3,
+            decayRate: 0.05,
+            maxTrees: 40,
+            birdCount: 15
+        };
 
-    if (currentBoard[r][c].neighborCount === 0) {
-      DIRECTIONS.forEach(([dr, dc]) => {
-        revealCellRecursive(currentBoard, r + dr, c + dc);
-      });
-    }
-  };
+        // --- STATE ---
+        let gameState = {
+            started: false,
+            zenLevel: 0,
+            spacePressed: false,
+            time: 0
+        };
 
-  const revealAllMines = (currentBoard) => {
-    for (let r = 0; r < BOARD_SIZE; r++) {
-      for (let c = 0; c < BOARD_SIZE; c++) {
-        if (currentBoard[r][c].isMine) {
-          currentBoard[r][c].isRevealed = true;
-        }
-      }
-    }
-  };
+        // --- AUDIO ENGINE (Procedural Zen Music 2.0) ---
+        const audio = {
+            ctx: null,
+            masterGain: null,
+            reverbNode: null,
+            padNodes: [], // Background drone
+            nextNoteTime: 0,
+            
+            // Pentatonic Scale (A Major Pentatonic: A, B, C#, E, F#)
+            // Frequencies for octaves 4 and 5
+            scale: [
+                220.00, 246.94, 277.18, 329.63, 369.99, // Octave 3/4
+                440.00, 493.88, 554.37, 659.25, 739.99  // Octave 4/5
+            ],
 
-  const checkWinCondition = (currentBoard) => {
-    let unrevealedSafeCells = 0;
-    for (let r = 0; r < BOARD_SIZE; r++) {
-      for (let c = 0; c < BOARD_SIZE; c++) {
-        if (!currentBoard[r][c].isMine && !currentBoard[r][c].isRevealed) {
-          unrevealedSafeCells++;
-        }
-      }
-    }
-    if (unrevealedSafeCells === 0) {
-      setGameState('won');
-    }
-  };
+            init: function() {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                this.masterGain = this.ctx.createGain();
+                this.masterGain.gain.value = 0.5;
+                this.masterGain.connect(this.ctx.destination);
 
-  // --- Render Helpers ---
+                // Setup Reverb (Procedural Impulse Response)
+                this.setupReverb();
 
-  const getCellContent = (cell) => {
-    if (cell.isFlagged) {
-      return <Shield className="w-5 h-5 text-blue-600 drop-shadow-sm" fill="#005cb9" />;
-    }
-    if (!cell.isRevealed) {
-      return null;
-    }
-    if (cell.isMine) {
-      return <Bug className="w-6 h-6 text-red-600 animate-pulse" />;
-    }
-    if (cell.neighborCount > 0) {
-      // Workday Brand Colors for numbers
-      const colors = [
-        '', 
-        'text-blue-600',   // 1
-        'text-orange-600', // 2
-        'text-purple-600', // 3
-        'text-indigo-700', // 4
-        'text-red-700',    // 5
-        'text-teal-700',   // 6
-        'text-gray-800',   // 7
-        'text-black'       // 8
-      ];
-      return <span className={`font-bold text-xl ${colors[cell.neighborCount]}`}>{cell.neighborCount}</span>;
-    }
-    return null;
-  };
+                // Start Ambient Pad
+                this.startPad();
 
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col items-center py-8" style={{ fontFamily: "'Archivo', sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap');
-      `}</style>
-      
-      {/* Header / Nav Bar Look */}
-      <div className="w-full max-w-4xl bg-white shadow-sm border-b border-gray-200 px-6 py-4 mb-8 flex justify-between items-center rounded-lg">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-blue-700 rounded-lg flex items-center justify-center text-white font-bold text-2xl shadow-md">W</div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-800 tracking-tight">Workday Bugs</h1>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Get rid of the bugs!</p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-6 text-sm font-medium">
-            <div className="flex flex-col items-end">
-                <span className="text-gray-400 text-xs">System Status</span>
-                <span className={`flex items-center gap-1 ${gameState === 'lost' ? 'text-red-600' : 'text-green-600'}`}>
-                    {gameState === 'playing' && <Activity className="w-4 h-4 animate-pulse" />}
-                    {gameState === 'idle' && "Standby"}
-                    {gameState === 'playing' && "Operational"}
-                    {gameState === 'won' && "Optimized"}
-                    {gameState === 'lost' && "Critical Failure"}
-                </span>
-            </div>
-        </div>
-      </div>
+                // Schedule first note
+                this.nextNoteTime = this.ctx.currentTime + 1;
+            },
 
-      {/* Main Game Container */}
-      <div className="bg-white p-8 rounded-xl shadow-xl border border-gray-100 max-w-2xl w-full">
+            setupReverb: function() {
+                // Generate a simple impulse response for a "large hall" sound
+                const duration = 3; 
+                const decay = 2;
+                const sampleRate = this.ctx.sampleRate;
+                const length = sampleRate * duration;
+                const impulse = this.ctx.createBuffer(2, length, sampleRate);
+                const left = impulse.getChannelData(0);
+                const right = impulse.getChannelData(1);
+
+                for (let i = 0; i < length; i++) {
+                    const n = i / length;
+                    // Noise * exponential decay
+                    left[i] = (Math.random() * 2 - 1) * Math.pow(1 - n, decay);
+                    right[i] = (Math.random() * 2 - 1) * Math.pow(1 - n, decay);
+                }
+
+                this.reverbNode = this.ctx.createConvolver();
+                this.reverbNode.buffer = impulse;
+                this.reverbNode.connect(this.masterGain);
+            },
+
+            startPad: function() {
+                // A chord (A2, E3) for a warm bottom end
+                const freqs = [110, 164.81]; 
+                freqs.forEach(f => {
+                    const osc = this.ctx.createOscillator();
+                    osc.type = 'sine'; // Pure sine for softness
+                    osc.frequency.value = f;
+                    
+                    const gain = this.ctx.createGain();
+                    gain.gain.value = 0.05; // Quiet start
+                    
+                    osc.connect(gain);
+                    gain.connect(this.reverbNode); // Send to reverb
+                    
+                    osc.start();
+                    this.padNodes.push(gain);
+                });
+            },
+
+            triggerBell: function() {
+                // Pick a random note from the scale
+                const freq = this.scale[Math.floor(Math.random() * this.scale.length)];
+                const time = this.ctx.currentTime;
+
+                const osc = this.ctx.createOscillator();
+                osc.type = 'sine'; // Bell-like
+                osc.frequency.setValueAtTime(freq, time);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0, time);
+                
+                // Envelope: Fast attack, long exponential release
+                gain.gain.linearRampToValueAtTime(0.15, time + 0.05); // Attack
+                gain.gain.exponentialRampToValueAtTime(0.001, time + 4.0); // Release (4 seconds)
+
+                osc.connect(gain);
+                gain.connect(this.reverbNode); // Send to reverb
+                
+                osc.start(time);
+                osc.stop(time + 4.5);
+            },
+
+            update: function(breathValue, isInhale) {
+                if(!this.ctx) return;
+
+                // 1. Modulate Pad Volume based on Breath
+                // Swells slightly during breath hold/peak
+                const targetPadVol = 0.05 + (breathValue * 0.05);
+                this.padNodes.forEach(g => {
+                    g.gain.setTargetAtTime(targetPadVol, this.ctx.currentTime, 0.2);
+                });
+
+                // 2. Scheduler for Bells (Generative Music)
+                if (this.ctx.currentTime >= this.nextNoteTime) {
+                    this.triggerBell();
+                    // Schedule next note randomly between 2s and 5s
+                    // Faster generation if Zen is high?
+                    const zenFactor = gameState.zenLevel / 200; // 0.0 to 0.5
+                    const delay = 2 + (Math.random() * (4 - (zenFactor * 2))); 
+                    this.nextNoteTime = this.ctx.currentTime + delay;
+                }
+            }
+        };
+
+        // --- THREE.JS SCENE ---
+        const scene = new THREE.Scene();
+        // Fallback fog if HDRI fails to load or for depth
+        scene.fog = new THREE.FogExp2(0xdba17d, 0.02); 
         
-        {/* Dashboard Metrics */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex flex-col items-center">
-            <span className="text-blue-600 text-xs font-bold uppercase tracking-widest mb-1">Legacy Risks</span>
-            <span className="text-3xl font-mono font-bold text-blue-800">{MINE_COUNT - flagsUsed}</span>
-            <span className="text-xs text-blue-400 mt-1">Systems to Replace</span>
-          </div>
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 1.2, 5);
 
-          <button 
-            onClick={resetGame}
-            className="group relative bg-white border-2 border-gray-100 hover:border-blue-500 rounded-lg flex items-center justify-center overflow-hidden transition-all duration-300"
-          >
-            <div className={`transform transition-transform duration-300 ${gameState === 'playing' ? 'scale-100' : 'scale-90'}`}>
-                {gameState === 'playing' && <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center"><Activity className="text-blue-600 w-6 h-6" /></div>}
-                {gameState === 'won' && <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center"><Trophy className="text-green-600 w-6 h-6" /></div>}
-                {gameState === 'lost' && <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center"><AlertTriangle className="text-red-600 w-6 h-6" /></div>}
-            </div>
-            <div className="absolute inset-x-0 bottom-2 text-xs text-gray-400 font-medium text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                RESET
-            </div>
-          </button>
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        // Tone mapping for better HDRI look
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 0.8;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 flex flex-col items-center">
-            <span className="text-orange-600 text-xs font-bold uppercase tracking-widest mb-1">Uptime</span>
-            <span className="text-3xl font-mono font-bold text-orange-800">{String(timeElapsed).padStart(3, '0')}</span>
-            <span className="text-xs text-orange-400 mt-1">Seconds Elapsed</span>
-          </div>
-        </div>
+        // --- ENVIRONMENT (HDRI / SKY) ---
+        let skyTexture = null;
+        
+        // Using direct public URL to avoid blob relative path issues
+        const loader = new THREE.RGBELoader();
+        const hdriUrl = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/qwantani_night_puresky_1k.hdr';
+        
+        loader.load(hdriUrl, function(texture) {
+            skyTexture = texture;
+            skyTexture.mapping = THREE.EquirectangularReflectionMapping;
 
-        {/* The Grid */}
-        <div 
-          className="grid gap-1 bg-gray-200 p-1 rounded-lg mx-auto select-none shadow-inner"
-          style={{ 
-            gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
-            width: 'fit-content'
-          }}
-        >
-          {board.map((row, r) => (
-            row.map((cell, c) => (
-              <div
-                key={`${r}-${c}`}
-                onClick={() => handleCellClick(r, c)}
-                onContextMenu={(e) => handleRightClick(e, r, c)}
-                className={`
-                  w-10 h-10 md:w-12 md:h-12 flex items-center justify-center cursor-pointer transition-all duration-150 text-sm md:text-base rounded-sm
-                  ${!cell.isRevealed && !cell.isFlagged ? 'bg-gradient-to-br from-blue-500 to-blue-600 hover:to-blue-500 shadow-sm border-b-4 border-blue-800' : ''}
-                  ${cell.isRevealed ? 'bg-white border border-gray-100 shadow-inner' : ''}
-                  ${cell.isFlagged ? 'bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-300' : ''}
-                  ${cell.isRevealed && cell.isMine ? 'bg-red-50 border-red-200' : ''}
-                `}
-              >
-                {getCellContent(cell)}
-              </div>
-            ))
-          ))}
-        </div>
+            const pmremGenerator = new THREE.PMREMGenerator(renderer);
+            pmremGenerator.compileEquirectangularShader();
+            const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+            
+            // We use the raw texture for the background so we can offset it (rotate it)
+            // We use the PMREM envMap for lighting
+            scene.background = skyTexture;
+            scene.environment = envMap;
+            
+            pmremGenerator.dispose();
+        }, undefined, function(err) {
+            console.error('Failed to load HDRI:', err);
+            scene.background = new THREE.Color(0x1a1a1a);
+        });
 
-        {/* Footer / Status Message */}
-        <div className="mt-6 text-center h-12">
-            {gameState === 'playing' && (
-                <p className="text-gray-500 text-sm animate-pulse flex items-center justify-center gap-2">
-                    <Activity className="w-4 h-4" />
-                    Detecting disparate legacy systems...
-                </p>
-            )}
-            {gameState === 'won' && (
-                <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-2 rounded-lg inline-flex items-center gap-2 shadow-sm animate-bounce">
-                    <CheckCircle className="w-5 h-5" />
-                    <span className="font-bold">Migration Complete!</span> Efficiency Rating: {Math.floor(efficiencyScore)}%
-                </div>
-            )}
-            {gameState === 'lost' && (
-                <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-2 rounded-lg inline-flex items-center gap-2 shadow-sm">
-                    <AlertTriangle className="w-5 h-5" />
-                    <span className="font-bold">System Crash!</span> Legacy bug encountered.
-                </div>
-            )}
-        </div>
-      </div>
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffaa88, 0.2); // Dimmer ambient for night
+        scene.add(ambientLight);
 
-      <div className="mt-8 text-gray-400 text-xs text-center max-w-md">
-        <p>Left Click to integrate module. Right Click to flag legacy risk.</p>
-        <p className="mt-2">Enterprise Sweeper v24.2 &copy; 2024</p>
-      </div>
+        // Sun/Moon light (Main Shadow Caster)
+        const moonLight = new THREE.DirectionalLight(0xaaccff, 1.2);
+        moonLight.position.set(-10, 20, -10);
+        moonLight.castShadow = true;
+        moonLight.shadow.mapSize.width = 2048;
+        moonLight.shadow.mapSize.height = 2048;
+        moonLight.shadow.bias = -0.0001;
+        scene.add(moonLight);
 
-    </div>
-  );
-}
+        // Rim Light (For Ground Texture Definition)
+        const rimLight = new THREE.DirectionalLight(0x5555ff, 0.8);
+        rimLight.position.set(10, 5, 10); // Opposite side
+        scene.add(rimLight);
 
-function App() {
-  return (
-    <div className="App">
-      <EnterpriseSweeper />
-    </div>
-  )
-}
+        // --- PROCEDURAL TEXTURES ---
+        // Create noise for ground bump map
+        function createNoiseTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const context = canvas.getContext('2d');
+            const imageData = context.createImageData(512, 512);
+            for (let i = 0; i < imageData.data.length; i += 4) {
+                const val = Math.floor(Math.random() * 255);
+                imageData.data[i] = val;
+                imageData.data[i+1] = val;
+                imageData.data[i+2] = val;
+                imageData.data[i+3] = 255;
+            }
+            context.putImageData(imageData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
 
-export default App;
+        const groundBump = createNoiseTexture();
+        groundBump.wrapS = THREE.RepeatWrapping;
+        groundBump.wrapT = THREE.RepeatWrapping;
+        groundBump.repeat.set(20, 20);
+
+        // Ground
+        const groundGeo = new THREE.PlaneGeometry(100, 100, 120, 120);
+        const posAttribute = groundGeo.attributes.position;
+        for (let i = 0; i < posAttribute.count; i++) {
+            const x = posAttribute.getX(i);
+            const y = posAttribute.getY(i);
+            const z = posAttribute.getZ(i);
+            // Create rolling hills
+            posAttribute.setZ(i, z + Math.sin(x * 0.15) * Math.cos(y * 0.15) * 1.5);
+        }
+        groundGeo.computeVertexNormals();
+        const groundMat = new THREE.MeshStandardMaterial({ 
+            color: 0x2b3a1a, 
+            roughness: 0.8,
+            metalness: 0.1,
+            bumpMap: groundBump,
+            bumpScale: 0.05
+        });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Fireflies (Particle System)
+        const particlesGeo = new THREE.BufferGeometry();
+        const particleCount = 200;
+        const posArray = new Float32Array(particleCount * 3);
+        const phaseArray = new Float32Array(particleCount);
+
+        for(let i=0; i < particleCount * 3; i+=3) {
+            posArray[i] = (Math.random() - 0.5) * 40; // x
+            posArray[i+1] = Math.random() * 3;        // y
+            posArray[i+2] = (Math.random() - 0.5) * 40; // z
+            phaseArray[i/3] = Math.random() * Math.PI * 2;
+        }
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        particlesGeo.setAttribute('phase', new THREE.BufferAttribute(phaseArray, 1));
+        
+        const particleMat = new THREE.PointsMaterial({
+            size: 0.08,
+            color: 0xffffaa,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+        const fireflies = new THREE.Points(particlesGeo, particleMat);
+        scene.add(fireflies);
+
+
+        // House
+        const houseGroup = new THREE.Group();
+        houseGroup.position.set(2, 0, -4); // Place it on a hill
+        
+        // Adjust height to match ground hills
+        const houseY = Math.sin(houseGroup.position.x * 0.15) * Math.cos(houseGroup.position.z * 0.15) * 1.5;
+        houseGroup.position.y = houseY;
+
+        // Main body
+        const houseBodyGeo = new THREE.BoxGeometry(2, 1.5, 2);
+        const houseBodyMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8 });
+        const houseBody = new THREE.Mesh(houseBodyGeo, houseBodyMat);
+        houseBody.position.y = 0.75;
+        houseBody.castShadow = true;
+        houseBody.receiveShadow = true;
+        houseGroup.add(houseBody);
+
+        // Roof
+        const roofGeo = new THREE.ConeGeometry(1.5, 1, 4);
+        const roofMat = new THREE.MeshStandardMaterial({ color: 0xA52A2A, roughness: 0.8 });
+        const roof = new THREE.Mesh(roofGeo, roofMat);
+        roof.position.y = 1.5 + 0.5;
+        roof.rotation.y = Math.PI / 4; 
+        roof.castShadow = true;
+        houseGroup.add(roof);
+
+        scene.add(houseGroup);
+
+        // --- BIRDS ---
+        const birds = [];
+        const birdGroup = new THREE.Group();
+        scene.add(birdGroup);
+
+        const birdGeo = new THREE.ConeGeometry(0.05, 0.2, 4);
+        birdGeo.rotateX(Math.PI / 2); // Point cone forward
+        const birdMat = new THREE.MeshStandardMaterial({color: 0xddddff, roughness: 0.4});
+
+        for(let i=0; i<config.birdCount; i++) {
+            const bird = new THREE.Mesh(birdGeo, birdMat);
+            // Random orbit parameters
+            bird.userData = {
+                angle: Math.random() * Math.PI * 2,
+                radius: 5 + Math.random() * 10,
+                speed: 0.3 + Math.random() * 0.3,
+                height: 3 + Math.random() * 4,
+                yOffset: Math.random() * Math.PI
+            };
+            birds.push(bird);
+            birdGroup.add(bird);
+        }
+
+        // --- DETAILED TREES ---
+        const treeGroup = new THREE.Group();
+        scene.add(treeGroup);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 1.0 });
+        const deadLeafMat = new THREE.MeshStandardMaterial({ color: 0x554433, roughness: 0.8 });
+        const zenLeafMat = new THREE.MeshStandardMaterial({ color: 0xffaadd, emissive: 0x440022, roughness: 0.5 });
+
+        // Helper to create a cloud of leaves
+        function createFoliageCloud() {
+            const cloud = new THREE.Group();
+            const positions = [
+                {x: 0, y: 0, z: 0, s: 1.0},
+                {x: 0.4, y: 0.3, z: 0, s: 0.7},
+                {x: -0.4, y: 0.3, z: 0.2, s: 0.7},
+                {x: 0, y: 0.5, z: -0.4, s: 0.7},
+                {x: 0, y: -0.2, z: 0.4, s: 0.6},
+                {x: 0.3, y: 0.6, z: 0.3, s: 0.6}
+            ];
+            
+            const geo = new THREE.DodecahedronGeometry(0.5);
+            // We use a clone of the material for each tree to allow individual blooming control
+            const mat = deadLeafMat.clone();
+
+            positions.forEach(pos => {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(pos.x, pos.y, pos.z);
+                mesh.scale.set(pos.s, pos.s, pos.s);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                // Add random rotation for variety
+                mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+                cloud.add(mesh);
+            });
+            
+            // Store the material on the group userData for easy access during animation
+            cloud.userData = { material: mat, baseScale: 1.0 };
+            return cloud;
+        }
+
+        for(let i=0; i<config.maxTrees; i++) {
+            const tree = new THREE.Group();
+            
+            // Tapered Trunk
+            const trunkGeo = new THREE.CylinderGeometry(0.08, 0.15, 2.5, 7);
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.y = 1.25;
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            tree.add(trunk);
+
+            // Foliage Cluster
+            const foliage = createFoliageCloud();
+            foliage.position.y = 2.5;
+            foliage.scale.set(0.1, 0.1, 0.1); // Start small (dead)
+            foliage.userData.maxScale = 1 + Math.random() * 0.8;
+            foliage.userData.swayOffset = Math.random() * 100; // Random offset for wind
+            foliage.userData.swaySpeed = 0.5 + Math.random() * 0.5;
+            tree.add(foliage);
+
+            // Positioning
+            const angle = Math.random() * Math.PI * 2;
+            const r = 3 + Math.random() * 25;
+            tree.position.set(Math.cos(angle)*r, 0, Math.sin(angle)*r);
+            
+            // Adjust height to match ground hills
+            const y = Math.sin(tree.position.x * 0.15) * Math.cos(tree.position.z * 0.15) * 1.5;
+            tree.position.y = y - 0.2; 
+            
+            // Add a slight random rotation to the whole tree
+            tree.rotation.y = Math.random() * Math.PI * 2;
+            // Store initial rotation for wind calculations
+            tree.userData.initialRotX = tree.rotation.x;
+            tree.userData.initialRotZ = tree.rotation.z;
+
+            treeGroup.add(tree);
+        }
+
+        // --- CONTROLS ---
+        function startGame() {
+            if(gameState.started) return;
+            gameState.started = true;
+            
+            // Hide Overlay
+            document.getElementById('start-overlay').style.display = 'none';
+            
+            // Init Audio
+            audio.init();
+        }
+
+        ['mousedown', 'touchstart', 'keydown'].forEach(evt => 
+            window.addEventListener(evt, (e) => {
+                if(!gameState.started) startGame();
+                // Prevent space scrolling
+                if (e.code === 'Space') e.preventDefault();
+                if(e.code === 'Space' || e.type !== 'keydown') gameState.spacePressed = true;
+            })
+        );
+        ['mouseup', 'touchend', 'keyup'].forEach(evt => 
+            window.addEventListener(evt, () => gameState.spacePressed = false)
+        );
+
+        // --- LOOP ---
+        const clock = new THREE.Clock();
+        const guideRing = document.getElementById('guide-ring');
+        const instruction = document.getElementById('breath-instruction');
+        const zenCounter = document.getElementById('zen-counter');
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            
+            if (gameState.started) {
+                gameState.time += delta;
+                
+                // Breath Math (0.0 to 1.0)
+                const cycle = (gameState.time % config.breathDuration) / config.breathDuration;
+                const rawSine = Math.sin(cycle * Math.PI * 2); 
+                // Map sine (-1 to 1) to (0 to 1)
+                const breathValue = (rawSine + 1) / 2;
+                
+                // Determine Phase (Inhale vs Exhale)
+                const isInhale = Math.cos(cycle * Math.PI * 2) > 0;
+
+                // Visual Guide
+                const size = 50 + (breathValue * 100);
+                guideRing.style.width = `${size}px`;
+                guideRing.style.height = `${size}px`;
+
+                // Update Audio
+                audio.update(breathValue, isInhale);
+
+                // Game Logic
+                let isSync = false;
+                if (isInhale) {
+                    instruction.innerText = "Inhale (Hold)";
+                    guideRing.style.borderColor = "white";
+                    if(gameState.spacePressed) isSync = true;
+                } else {
+                    instruction.innerText = "Exhale (Release)";
+                    guideRing.style.borderColor = "#88ccff";
+                    if(!gameState.spacePressed) isSync = true;
+                }
+
+                if (isSync) gameState.zenLevel = Math.min(100, gameState.zenLevel + config.zenRate);
+                else gameState.zenLevel = Math.max(0, gameState.zenLevel - config.decayRate);
+
+                zenCounter.innerText = `Zen: ${Math.floor(gameState.zenLevel)}%`;
+
+                // --- VISUAL FEEDBACK LOOP ---
+                const zPct = gameState.zenLevel / 100;
+
+                // 1. SKY ROTATION
+                if (skyTexture) {
+                    skyTexture.offset.x += delta * 0.005; // Subtle rotation
+                }
+
+                // 2. Fog lifting
+                scene.fog.density = THREE.MathUtils.lerp(0.04, 0.005, zPct);
+
+                // 3. Trees Blooming & WIND
+                treeGroup.children.forEach(tree => {
+                    const foliageGroup = tree.children[1];
+                    
+                    const targetScale = THREE.MathUtils.lerp(0.1, foliageGroup.userData.maxScale, zPct);
+                    foliageGroup.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.05);
+
+                    const mat = foliageGroup.userData.material;
+                    if (zPct > 0.4) {
+                        mat.color.lerp(zenLeafMat.color, 0.05);
+                        mat.emissive.lerp(zenLeafMat.emissive, 0.05);
+                        mat.emissiveIntensity = (zPct - 0.4) * 0.5;
+                    } else {
+                        mat.color.lerp(deadLeafMat.color, 0.05);
+                        mat.emissive.setHex(0x000000);
+                    }
+
+                    // Tree Sway
+                    const windTime = gameState.time * 0.8;
+                    const sway = Math.sin(windTime + tree.position.x * 0.5) * 0.02; 
+                    tree.rotation.z = tree.userData.initialRotZ + sway;
+                    tree.rotation.x = tree.userData.initialRotX + (Math.cos(windTime * 0.7 + tree.position.z) * 0.02);
+
+                    const leafSway = Math.sin(windTime * foliageGroup.userData.swaySpeed + foliageGroup.userData.swayOffset) * 0.05;
+                    foliageGroup.rotation.z = leafSway;
+                    foliageGroup.rotation.x = leafSway * 0.5;
+                });
+
+                // 4. BIRDS
+                birds.forEach(bird => {
+                    bird.userData.angle += bird.userData.speed * delta;
+                    const r = bird.userData.radius;
+                    const a = bird.userData.angle;
+                    
+                    // Circular motion + Vertical Sine Wave
+                    bird.position.x = Math.cos(a) * r;
+                    bird.position.z = Math.sin(a) * r;
+                    bird.position.y = bird.userData.height + Math.sin(a * 2 + bird.userData.yOffset) * 1.0;
+                    
+                    // Look ahead
+                    const lookTarget = new THREE.Vector3(
+                        Math.cos(a + 0.1) * r,
+                        bird.userData.height + Math.sin((a + 0.1) * 2 + bird.userData.yOffset),
+                        Math.sin(a + 0.1) * r
+                    );
+                    bird.lookAt(lookTarget);
+                });
+
+                // 5. Fireflies Motion
+                const positions = fireflies.geometry.attributes.position.array;
+                const phases = fireflies.geometry.attributes.phase.array;
+                for(let i=0; i<particleCount; i++) {
+                    const yIdx = i*3 + 1;
+                    // Float up slowly and bob
+                    positions[yIdx] += delta * 0.2; 
+                    if(positions[yIdx] > 4) positions[yIdx] = 0; // Reset height
+                    
+                    // Slight wobble x/z
+                    positions[i*3] += Math.sin(gameState.time + phases[i]) * 0.01;
+                }
+                fireflies.geometry.attributes.position.needsUpdate = true;
+
+                // 6. Camera Float
+                camera.position.y = 1.2 + (breathValue * 0.1); 
+                camera.lookAt(0, 1, 0);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>
