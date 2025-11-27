@@ -155,31 +155,27 @@
             canvas.height = 64;
             const ctx = canvas.getContext('2d');
 
-            if (type === 'wall') {
-                ctx.fillStyle = '#2c3e50';
+            if (type === 'floor') {
+                // Snow Pattern
+                ctx.fillStyle = '#e0e0e0';
                 ctx.fillRect(0, 0, 64, 64);
-                ctx.fillStyle = '#34495e';
-                ctx.fillRect(2, 2, 30, 28);
-                ctx.fillRect(34, 2, 28, 28);
-                ctx.fillRect(2, 34, 28, 28);
-                ctx.fillRect(32, 34, 30, 28);
-                ctx.fillStyle = '#ecf0f1';
-                ctx.fillRect(0,0,64, 4);
-            } else if (type === 'floor') {
-                ctx.fillStyle = '#ecf0f1';
-                ctx.fillRect(0,0,64,64);
-                ctx.fillStyle = '#bdc3c7';
-                for(let i=0; i<20; i++) {
-                    ctx.beginPath();
-                    ctx.arc(Math.random()*64, Math.random()*64, 1, 0, Math.PI*2);
-                    ctx.fill();
+                
+                // Noise
+                ctx.fillStyle = '#ffffff';
+                for(let i=0; i<40; i++) {
+                    const x = Math.random() * 64;
+                    const y = Math.random() * 64;
+                    const s = Math.random() * 2 + 1;
+                    ctx.fillRect(x, y, s, s);
                 }
+
             } else if (type === 'gift') {
                 ctx.fillStyle = '#c0392b';
                 ctx.fillRect(0,0,64,64);
                 ctx.fillStyle = '#f1c40f';
                 ctx.fillRect(28, 0, 8, 64);
                 ctx.fillRect(0, 28, 64, 8);
+
             } else if (type === 'grinch') {
                 // Background
                 ctx.fillStyle = '#2ecc71';
@@ -210,11 +206,27 @@
 
             const texture = new THREE.CanvasTexture(canvas);
             texture.magFilter = THREE.NearestFilter;
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            
+            if (type === 'floor') {
+                texture.repeat.set(CONFIG.mapWidth/2, CONFIG.mapHeight/2);
+            }
+            
             return texture;
         }
 
+        // --- Load External Textures ---
+        const loader = new THREE.TextureLoader();
+        loader.setCrossOrigin('anonymous');
+        
+        const wallTexture = loader.load('https://images.rawpixel.com/image_800/czNmcy1wcml2YXRlL3Jhd3BpeGVsX2ltYWdlcy93ZWJzaXRlX2NvbnRlbnQvbHIvZnJ3YWxsX2hhdXN3YW5kX2ZhY2FkZV9zeW1tZXRyaWNhbC1pbWFnZS1reWJjZ3locS5qcGc.jpg');
+        // Keep the pixelated look despite high res source
+        wallTexture.magFilter = THREE.NearestFilter;
+        wallTexture.minFilter = THREE.NearestFilter;
+
         const TEXTURES = {
-            wall: createTexture('wall'),
+            wall: wallTexture,
             floor: createTexture('floor'),
             gift: createTexture('gift'),
             grinch: createTexture('grinch')
@@ -231,10 +243,12 @@
         renderer.shadowMap.enabled = true;
         document.getElementById('container').appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        // Lighting - Increased intensity for visibility
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
         
-        const playerLight = new THREE.PointLight(0xffaa00, 0.8, 20);
+        // Player light (flashlight/lantern feel) - Increased range and brightness
+        const playerLight = new THREE.PointLight(0xffaa00, 1.5, 40);
         scene.add(playerLight);
 
         const controls = new PointerLockControls(camera, document.body);
@@ -509,14 +523,16 @@
             initVisitedMap(CONFIG.mapWidth, CONFIG.mapHeight);
 
             const floorGeo = new THREE.PlaneGeometry(CONFIG.mapWidth * CONFIG.cellSize, CONFIG.mapHeight * CONFIG.cellSize);
-            const floorMat = new THREE.MeshStandardMaterial({ map: TEXTURES.floor, roughness: 0.8 });
+            // Switched to MeshLambertMaterial for better brightness
+            const floorMat = new THREE.MeshLambertMaterial({ map: TEXTURES.floor });
             const floor = new THREE.Mesh(floorGeo, floorMat);
             floor.rotation.x = -Math.PI / 2;
             floor.position.set( (CONFIG.mapWidth*CONFIG.cellSize)/2 - (CONFIG.cellSize/2), 0, (CONFIG.mapHeight*CONFIG.cellSize)/2 - (CONFIG.cellSize/2) );
             scene.add(floor);
 
             const wallGeo = new THREE.BoxGeometry(CONFIG.cellSize, CONFIG.cellSize * 1.5, CONFIG.cellSize);
-            const wallMat = new THREE.MeshStandardMaterial({ map: TEXTURES.wall });
+            // Switched to MeshLambertMaterial for better brightness
+            const wallMat = new THREE.MeshLambertMaterial({ map: TEXTURES.wall });
             
             const emptySpots = [];
 
