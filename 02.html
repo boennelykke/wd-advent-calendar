@@ -1,323 +1,854 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, Bug, Trophy, AlertTriangle, Activity, CheckCircle } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Santa's Sleigh Dash</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d1b2a;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none; /* Prevent zoom/scroll on mobile */
+        }
 
-// --- Constants & Config ---
-const BOARD_SIZE = 10;
-const MINE_COUNT = 15;
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
 
-// Directions for neighbor checking
-const DIRECTIONS = [
-  [-1, -1], [-1, 0], [-1, 1],
-  [0, -1],           [0, 1],
-  [1, -1],  [1, 0],  [1, 1],
-];
+        canvas {
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            background: linear-gradient(to bottom, #0f2027, #203a43, #2c5364); 
+        }
 
-const createBoard = (size, mines) => {
-  // Initialize empty board
-  const board = Array(size).fill(null).map(() => Array(size).fill({
-    isMine: false,
-    isRevealed: false,
-    isFlagged: false,
-    neighborCount: 0,
-  }));
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+            z-index: 10;
+        }
 
-  // Place mines
-  let minesPlaced = 0;
-  while (minesPlaced < mines) {
-    const r = Math.floor(Math.random() * size);
-    const c = Math.floor(Math.random() * size);
-    if (!board[r][c].isMine) {
-      board[r][c] = { ...board[r][c], isMine: true };
-      minesPlaced++;
-    }
-  }
+        #messageOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+            text-align: center;
+        }
 
-  // Calculate neighbor counts
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (!board[r][c].isMine) {
-        let count = 0;
-        DIRECTIONS.forEach(([dr, dc]) => {
-          const nr = r + dr;
-          const nc = c + dc;
-          if (nr >= 0 && nr < size && nc >= 0 && nc < size && board[nr][nc].isMine) {
-            count++;
-          }
-        });
-        board[r][c] = { ...board[r][c], neighborCount: count };
-      }
-    }
-  }
-  return board;
-};
+        .hidden {
+            display: none !important;
+        }
 
-// --- Main Game Component ---
-function EnterpriseSweeper() {
-  const [board, setBoard] = useState([]);
-  const [gameState, setGameState] = useState('idle'); // idle, playing, won, lost
-  const [flagsUsed, setFlagsUsed] = useState(0);
-  const [timeElapsed, setTimeElapsed] = useState(0);
-  const [efficiencyScore, setEfficiencyScore] = useState(100);
+        h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            color: #ff4d4d;
+            text-shadow: 2px 2px white;
+        }
 
-  // Initialize game on load
-  useEffect(() => {
-    resetGame();
-  }, []);
+        p {
+            font-size: 20px;
+            margin-bottom: 30px;
+            max-width: 600px;
+            line-height: 1.5;
+        }
 
-  // Timer logic
-  useEffect(() => {
-    let interval;
-    if (gameState === 'playing') {
-      interval = setInterval(() => {
-        setTimeElapsed((prev) => prev + 1);
-        // Decrease efficiency score over time to simulate "operational drag"
-        setEfficiencyScore((prev) => Math.max(0, prev - 0.1));
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [gameState]);
+        button {
+            padding: 15px 40px;
+            font-size: 24px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.2s;
+            box-shadow: 0 4px 0 #1e7e34;
+        }
 
-  const resetGame = () => {
-    setBoard(createBoard(BOARD_SIZE, MINE_COUNT));
-    setGameState('playing');
-    setFlagsUsed(0);
-    setTimeElapsed(0);
-    setEfficiencyScore(100);
-  };
+        button:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
 
-  const handleCellClick = (r, c) => {
-    if (gameState !== 'playing' || board[r][c].isFlagged || board[r][c].isRevealed) return;
+        button:hover {
+            background-color: #34ce57;
+        }
 
-    const newBoard = [...board.map(row => [...row])];
-    const cell = newBoard[r][c];
+        /* Mobile Controls */
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 40px;
+            box-sizing: border-box;
+            pointer-events: none; /* Let clicks pass through empty space */
+        }
 
-    if (cell.isMine) {
-      // Game Over Logic
-      revealAllMines(newBoard);
-      setBoard(newBoard);
-      setGameState('lost');
-    } else {
-      // Reveal Logic
-      revealCellRecursive(newBoard, r, c);
-      setBoard(newBoard);
-      checkWinCondition(newBoard);
-    }
-  };
+        .d-pad, .action-btn {
+            pointer-events: auto;
+            display: none; /* Hidden on desktop by default via JS check */
+        }
 
-  const handleRightClick = (e, r, c) => {
-    e.preventDefault();
-    if (gameState !== 'playing' || board[r][c].isRevealed) return;
+        .btn {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white;
+            font-size: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0 10px;
+            user-select: none;
+            touch-action: none;
+        }
 
-    const newBoard = [...board.map(row => [...row])];
-    const cell = newBoard[r][c];
+        .btn:active {
+            background: rgba(255, 255, 255, 0.4);
+        }
 
-    // Toggle Flag
-    if (!cell.isFlagged && flagsUsed < MINE_COUNT) {
-      cell.isFlagged = true;
-      setFlagsUsed(prev => prev + 1);
-    } else if (cell.isFlagged) {
-      cell.isFlagged = false;
-      setFlagsUsed(prev => prev - 1);
-    }
+        /* Powerup Indicator */
+        #powerupStatus {
+            position: absolute;
+            top: 60px;
+            left: 20px;
+            color: #ffd700;
+            font-size: 18px;
+            font-weight: bold;
+            display: none;
+            text-shadow: 1px 1px 0 #000;
+            z-index: 10;
+        }
+
+        .row {
+            display: flex;
+        }
+
+        @media (max-width: 768px) {
+            .d-pad, .action-btn {
+                display: flex;
+            }
+            h1 { font-size: 32px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <div id="ui">
+        <div>Presents: <span id="score">0</span> / <span id="total">0</span></div>
+    </div>
+    <div id="powerupStatus">DOUBLE JUMP ACTIVE!</div>
     
-    setBoard(newBoard);
-  };
+    <div id="messageOverlay">
+        <h1 id="msgTitle">Santa's Sleigh Dash</h1>
+        <p id="msgText">Christmas is here! Help Santa collect all the scattered presents and get back to the sleigh.<br><br>Arrows/WASD to Move & Jump.</p>
+        <button id="startBtn">Start Game</button>
+    </div>
 
-  const revealCellRecursive = (currentBoard, r, c) => {
-    if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE || currentBoard[r][c].isRevealed || currentBoard[r][c].isFlagged) {
-      return;
-    }
+    <canvas id="gameCanvas"></canvas>
 
-    currentBoard[r][c].isRevealed = true;
-
-    if (currentBoard[r][c].neighborCount === 0) {
-      DIRECTIONS.forEach(([dr, dc]) => {
-        revealCellRecursive(currentBoard, r + dr, c + dc);
-      });
-    }
-  };
-
-  const revealAllMines = (currentBoard) => {
-    for (let r = 0; r < BOARD_SIZE; r++) {
-      for (let c = 0; c < BOARD_SIZE; c++) {
-        if (currentBoard[r][c].isMine) {
-          currentBoard[r][c].isRevealed = true;
-        }
-      }
-    }
-  };
-
-  const checkWinCondition = (currentBoard) => {
-    let unrevealedSafeCells = 0;
-    for (let r = 0; r < BOARD_SIZE; r++) {
-      for (let c = 0; c < BOARD_SIZE; c++) {
-        if (!currentBoard[r][c].isMine && !currentBoard[r][c].isRevealed) {
-          unrevealedSafeCells++;
-        }
-      }
-    }
-    if (unrevealedSafeCells === 0) {
-      setGameState('won');
-    }
-  };
-
-  // --- Render Helpers ---
-
-  const getCellContent = (cell) => {
-    if (cell.isFlagged) {
-      return <Shield className="w-5 h-5 text-blue-600 drop-shadow-sm" fill="#005cb9" />;
-    }
-    if (!cell.isRevealed) {
-      return null;
-    }
-    if (cell.isMine) {
-      return <Bug className="w-6 h-6 text-red-600 animate-pulse" />;
-    }
-    if (cell.neighborCount > 0) {
-      // Workday Brand Colors for numbers
-      const colors = [
-        '', 
-        'text-blue-600',   // 1
-        'text-orange-600', // 2
-        'text-purple-600', // 3
-        'text-indigo-700', // 4
-        'text-red-700',    // 5
-        'text-teal-700',   // 6
-        'text-gray-800',   // 7
-        'text-black'       // 8
-      ];
-      return <span className={`font-bold text-xl ${colors[cell.neighborCount]}`}>{cell.neighborCount}</span>;
-    }
-    return null;
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col items-center py-8" style={{ fontFamily: "'Archivo', sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap');
-      `}</style>
-      
-      {/* Header / Nav Bar Look */}
-      <div className="w-full max-w-4xl bg-white shadow-sm border-b border-gray-200 px-6 py-4 mb-8 flex justify-between items-center rounded-lg">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-blue-700 rounded-lg flex items-center justify-center text-white font-bold text-2xl shadow-md">W</div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-800 tracking-tight">Workday Bugs</h1>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Get rid of the bugs!</p>
-          </div>
+    <div id="controls">
+        <div class="d-pad row">
+            <div class="btn" id="btnLeft">←</div>
+            <div class="btn" id="btnRight">→</div>
         </div>
-        <div className="flex items-center space-x-6 text-sm font-medium">
-            <div className="flex flex-col items-end">
-                <span className="text-gray-400 text-xs">System Status</span>
-                <span className={`flex items-center gap-1 ${gameState === 'lost' ? 'text-red-600' : 'text-green-600'}`}>
-                    {gameState === 'playing' && <Activity className="w-4 h-4 animate-pulse" />}
-                    {gameState === 'idle' && "Standby"}
-                    {gameState === 'playing' && "Operational"}
-                    {gameState === 'won' && "Optimized"}
-                    {gameState === 'lost' && "Critical Failure"}
-                </span>
-            </div>
+        <div class="action-btn">
+            <div class="btn" id="btnJump">↑</div>
         </div>
-      </div>
+    </div>
+</div>
 
-      {/* Main Game Container */}
-      <div className="bg-white p-8 rounded-xl shadow-xl border border-gray-100 max-w-2xl w-full">
+<script>
+    // --- Configuration ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Assets
+    const coinImg = new Image();
+    coinImg.src = "https://yt3.googleusercontent.com/-DYvc9ZksLMneBQhjqIi2Uaz0GmlM-PbiE-QjKL_tj_OPXftAHmxRCuhnHIxtDbNwEiJr0MsHyk=s900-c-k-c0x00ffffff-no-rj";
+
+    // Physics Constants
+    const GRAVITY = 0.6;
+    const FRICTION = 0.8;
+    const SPEED = 5;
+    const JUMP_FORCE = -14;
+    const TILE_SIZE = 40;
+
+    // Game State
+    let animationFrameId;
+    let lastTime = 0;
+    let cameraX = 0;
+    let score = 0;
+    let totalPresents = 0;
+    let gameActive = false;
+    let isEnding = false;
+    let isTransitioning = false; // New flag to prevent freeze
+    let won = false;
+
+    // Input State
+    const keys = {
+        left: false,
+        right: false,
+        up: false,
+        jumpPressed: false
+    };
+
+    // --- Level Design ---
+    // . = Empty
+    // # = Snow/Ground
+    // = = Ice/Platform
+    // P = Present
+    // C = Coin (Double Jump)
+    // S = Santa Start
+    // E = Sleigh (End)
+    // ^ = Spike
+    
+    const levelPlan = [
+        "....................................................................................",
+        "....................................................................................",
+        "....................................................................................",
+        "........................................................PPP.........................",
+        ".......................................................=====........................",
+        ".........................P..........................................................",
+        ".......................===...........C..............P..........P....................",
+        "...................==..............................===.......===....................",
+        ".............P.........................P............................................",
+        "...........====......................=====..........................................",
+        ".......................................................................E............",
+        "......P....................^........................................#######.........",
+        ".S...###.................#####....###.......###.....^.....^......###.......###......",
+        "####.....###..###...###.........#.....#...#.....#.#####.#####..#....................",
+        "...................................................................................."
+    ];
+
+    let tiles = [];
+    let presents = [];
+    let spikes = [];
+    let particles = [];
+    let flyingPresents = [];
+    let powerup = null;
+    let sleigh = null;
+
+    // --- Entity Classes ---
+
+    class Player {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.width = 30;
+            this.height = 38; 
+            this.vx = 0;
+            this.vy = 0;
+            this.grounded = false;
+            this.facingRight = true;
+            this.animTimer = 0;
+            
+            // Double Jump Logic
+            this.maxJumps = 1;
+            this.jumpCount = 0;
+        }
+
+        update() {
+            // Horizontal Movement
+            if (keys.left) {
+                this.vx = -SPEED;
+                this.facingRight = false;
+            } else if (keys.right) {
+                this.vx = SPEED;
+                this.facingRight = true;
+            } else {
+                this.vx *= FRICTION;
+            }
+
+            // Jump Handling
+            if (keys.jumpPressed) {
+                if (this.grounded) {
+                    this.vy = JUMP_FORCE;
+                    this.grounded = false;
+                    this.jumpCount = 1;
+                } else if (this.jumpCount < this.maxJumps) {
+                    this.vy = JUMP_FORCE;
+                    this.jumpCount++;
+                }
+                keys.jumpPressed = false; 
+            }
+
+            // Gravity
+            this.vy += GRAVITY;
+
+            // Apply Velocity
+            this.x += this.vx;
+            this.handleHorizontalCollisions();
+            this.y += this.vy;
+            this.handleVerticalCollisions();
+
+            // Screen bounds
+            if (this.y > canvas.height + 100) {
+                gameOver(false);
+            }
+
+            // Animation timer
+            if (Math.abs(this.vx) > 0.5) this.animTimer += 0.2;
+        }
+
+        handleHorizontalCollisions() {
+            for (let tile of tiles) {
+                if (rectIntersect(this.x, this.y, this.width, this.height, tile.x, tile.y, TILE_SIZE, TILE_SIZE)) {
+                    if (this.vx > 0) {
+                        this.x = tile.x - this.width;
+                    } else if (this.vx < 0) {
+                        this.x = tile.x + TILE_SIZE;
+                    }
+                    this.vx = 0;
+                }
+            }
+        }
+
+        handleVerticalCollisions() {
+            this.grounded = false;
+            for (let tile of tiles) {
+                if (rectIntersect(this.x, this.y, this.width, this.height, tile.x, tile.y, TILE_SIZE, TILE_SIZE)) {
+                    if (this.vy > 0) {
+                        this.y = tile.y - this.height;
+                        this.grounded = true;
+                        this.vy = 0;
+                        this.jumpCount = 0;
+                    } else if (this.vy < 0) {
+                        this.y = tile.y + TILE_SIZE;
+                        this.vy = 0;
+                    }
+                }
+            }
+        }
+
+        draw(ctx, camX) {
+            const drawX = Math.round(this.x - camX);
+            const drawY = Math.round(this.y);
+            
+            // Santa Body
+            ctx.fillStyle = '#d32f2f';
+            ctx.fillRect(drawX, drawY + 10, this.width, this.height - 10);
+
+            // Trim
+            ctx.fillStyle = 'white';
+            ctx.fillRect(drawX + 12, drawY + 10, 6, this.height - 10);
+            
+            // Belt
+            ctx.fillStyle = 'black';
+            ctx.fillRect(drawX, drawY + 24, this.width, 4);
+            ctx.fillStyle = 'gold';
+            ctx.fillRect(drawX + 10, drawY + 23, 10, 6);
+
+            // Face
+            ctx.fillStyle = '#ffccb3';
+            ctx.fillRect(drawX + 4, drawY + 4, 22, 14);
+
+            // Beard
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.moveTo(drawX + 2, drawY + 12);
+            ctx.lineTo(drawX + 28, drawY + 12);
+            ctx.lineTo(drawX + 15, drawY + 24);
+            ctx.fill();
+
+            // Hat
+            ctx.fillStyle = '#d32f2f';
+            ctx.beginPath();
+            ctx.moveTo(drawX, drawY + 5);
+            ctx.lineTo(drawX + 30, drawY + 5);
+            ctx.lineTo(drawX + 25, drawY - 8); 
+            ctx.lineTo(drawX + 10, drawY - 2);
+            ctx.fill();
+            
+            // Pom pom
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(drawX + 25, drawY - 8, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eyes
+            ctx.fillStyle = 'black';
+            if (this.facingRight) {
+                ctx.fillRect(drawX + 18, drawY + 8, 2, 2);
+            } else {
+                ctx.fillRect(drawX + 10, drawY + 8, 2, 2);
+            }
+        }
+    }
+
+    // --- Flying Present Class ---
+    class FlyingPresent {
+        constructor(startX, startY, targetX, targetY, delay) {
+            this.x = startX;
+            this.y = startY;
+            this.targetX = targetX;
+            this.targetY = targetY;
+            this.w = 20;
+            this.h = 20;
+            this.speed = 0;
+            this.delay = delay;
+            this.arrived = false;
+        }
+
+        update() {
+            if (this.delay > 0) {
+                this.delay--;
+                return;
+            }
+
+            const dx = this.targetX - this.x;
+            const dy = this.targetY - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist < 10) {
+                this.arrived = true;
+                return;
+            }
+
+            this.speed += 0.5;
+            const angle = Math.atan2(dy, dx);
+            this.x += Math.cos(angle) * this.speed;
+            this.y += Math.sin(angle) * this.speed;
+        }
+
+        draw(ctx) {
+            if (this.delay > 0 || this.arrived) return;
+            
+            // Draw in World Coordinates (Context is already translated)
+            // We use translate to rotate the specific present
+            ctx.save();
+            ctx.translate(this.x + 10, this.y + 10);
+            ctx.rotate(this.speed * 0.1); 
+            
+            ctx.fillStyle = '#4caf50';
+            ctx.fillRect(-10, -10, 20, 20); // Center box
+            ctx.fillStyle = '#f44336';
+            ctx.fillRect(-2, -10, 4, 20);
+            ctx.fillRect(-10, -2, 20, 4);
+            
+            ctx.restore();
+        }
+    }
+
+    let player;
+
+    // --- Helpers ---
+
+    function rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
+        return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1;
+    }
+
+    function createSnowParticles() {
+        if (particles.length < 100) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: 0,
+                r: Math.random() * 3 + 1,
+                speed: Math.random() * 2 + 1
+            });
+        }
+    }
+
+    function updateParticles() {
+        for (let i = 0; i < particles.length; i++) {
+            let p = particles[i];
+            p.y += p.speed;
+            p.x += Math.sin(p.y * 0.01) * 0.5; 
+            if (p.y > canvas.height) {
+                particles[i].y = 0;
+                particles[i].x = Math.random() * canvas.width;
+            }
+        }
+    }
+
+    function drawParticles(ctx) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        for (let p of particles) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // --- Core Game Functions ---
+
+    function initGame() {
+        tiles = [];
+        presents = [];
+        spikes = [];
+        flyingPresents = [];
+        score = 0;
         
-        {/* Dashboard Metrics */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex flex-col items-center">
-            <span className="text-blue-600 text-xs font-bold uppercase tracking-widest mb-1">Legacy Risks</span>
-            <span className="text-3xl font-mono font-bold text-blue-800">{MINE_COUNT - flagsUsed}</span>
-            <span className="text-xs text-blue-400 mt-1">Systems to Replace</span>
-          </div>
+        for (let y = 0; y < levelPlan.length; y++) {
+            let row = levelPlan[y];
+            for (let x = 0; x < row.length; x++) {
+                let char = row[x];
+                let posX = x * TILE_SIZE;
+                let posY = y * TILE_SIZE;
 
-          <button 
-            onClick={resetGame}
-            className="group relative bg-white border-2 border-gray-100 hover:border-blue-500 rounded-lg flex items-center justify-center overflow-hidden transition-all duration-300"
-          >
-            <div className={`transform transition-transform duration-300 ${gameState === 'playing' ? 'scale-100' : 'scale-90'}`}>
-                {gameState === 'playing' && <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center"><Activity className="text-blue-600 w-6 h-6" /></div>}
-                {gameState === 'won' && <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center"><Trophy className="text-green-600 w-6 h-6" /></div>}
-                {gameState === 'lost' && <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center"><AlertTriangle className="text-red-600 w-6 h-6" /></div>}
-            </div>
-            <div className="absolute inset-x-0 bottom-2 text-xs text-gray-400 font-medium text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                RESET
-            </div>
-          </button>
+                if (char === '#') {
+                    tiles.push({ x: posX, y: posY, type: 'snow' });
+                } else if (char === '=') {
+                    tiles.push({ x: posX, y: posY, type: 'ice' });
+                } else if (char === 'P') {
+                    presents.push({ x: posX + 10, y: posY + 10, w: 20, h: 20, active: true });
+                } else if (char === 'C') {
+                    powerup = { x: posX, y: posY, w: 40, h: 40, active: true };
+                } else if (char === 'S') {
+                    player = new Player(posX, posY);
+                } else if (char === 'E') {
+                    sleigh = { x: posX, y: posY, w: 100, h: 50 }; 
+                } else if (char === '^') {
+                    spikes.push({ x: posX, y: posY + 20, w: TILE_SIZE, h: 20 });
+                }
+            }
+        }
 
-          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 flex flex-col items-center">
-            <span className="text-orange-600 text-xs font-bold uppercase tracking-widest mb-1">Uptime</span>
-            <span className="text-3xl font-mono font-bold text-orange-800">{String(timeElapsed).padStart(3, '0')}</span>
-            <span className="text-xs text-orange-400 mt-1">Seconds Elapsed</span>
-          </div>
-        </div>
+        totalPresents = presents.length;
+        document.getElementById('total').innerText = totalPresents;
+        document.getElementById('score').innerText = score;
+        document.getElementById('powerupStatus').style.display = 'none';
+        
+        gameActive = true;
+        isEnding = false;
+        isTransitioning = false;
+        won = false;
+        
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        loop();
+    }
 
-        {/* The Grid */}
-        <div 
-          className="grid gap-1 bg-gray-200 p-1 rounded-lg mx-auto select-none shadow-inner"
-          style={{ 
-            gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
-            width: 'fit-content'
-          }}
-        >
-          {board.map((row, r) => (
-            row.map((cell, c) => (
-              <div
-                key={`${r}-${c}`}
-                onClick={() => handleCellClick(r, c)}
-                onContextMenu={(e) => handleRightClick(e, r, c)}
-                className={`
-                  w-10 h-10 md:w-12 md:h-12 flex items-center justify-center cursor-pointer transition-all duration-150 text-sm md:text-base rounded-sm
-                  ${!cell.isRevealed && !cell.isFlagged ? 'bg-gradient-to-br from-blue-500 to-blue-600 hover:to-blue-500 shadow-sm border-b-4 border-blue-800' : ''}
-                  ${cell.isRevealed ? 'bg-white border border-gray-100 shadow-inner' : ''}
-                  ${cell.isFlagged ? 'bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-300' : ''}
-                  ${cell.isRevealed && cell.isMine ? 'bg-red-50 border-red-200' : ''}
-                `}
-              >
-                {getCellContent(cell)}
-              </div>
-            ))
-          ))}
-        </div>
+    function startEndingSequence() {
+        if(isEnding) return;
+        isEnding = true;
+        
+        // Spawn flying presents from player position
+        for (let i = 0; i < score; i++) {
+            flyingPresents.push(new FlyingPresent(
+                player.x, 
+                player.y, 
+                sleigh.x + 30 + (Math.random() * 50), // Random spot in sleigh
+                sleigh.y + 10, 
+                i * 8 // Staggered start delay
+            ));
+        }
+    }
 
-        {/* Footer / Status Message */}
-        <div className="mt-6 text-center h-12">
-            {gameState === 'playing' && (
-                <p className="text-gray-500 text-sm animate-pulse flex items-center justify-center gap-2">
-                    <Activity className="w-4 h-4" />
-                    Detecting disparate legacy systems...
-                </p>
-            )}
-            {gameState === 'won' && (
-                <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-2 rounded-lg inline-flex items-center gap-2 shadow-sm animate-bounce">
-                    <CheckCircle className="w-5 h-5" />
-                    <span className="font-bold">Migration Complete!</span> Efficiency Rating: {Math.floor(efficiencyScore)}%
-                </div>
-            )}
-            {gameState === 'lost' && (
-                <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-2 rounded-lg inline-flex items-center gap-2 shadow-sm">
-                    <AlertTriangle className="w-5 h-5" />
-                    <span className="font-bold">System Crash!</span> Legacy bug encountered.
-                </div>
-            )}
-        </div>
-      </div>
+    function update() {
+        if (!gameActive) return;
 
-      <div className="mt-8 text-gray-400 text-xs text-center max-w-md">
-        <p>Left Click to integrate module. Right Click to flag legacy risk.</p>
-        <p className="mt-2">Enterprise Sweeper v24.2 &copy; 2024</p>
-      </div>
+        // While ending, we still update particles but not player physics
+        if (!isEnding) {
+            player.update();
+        } else {
+            // Ending Animation Logic
+            let allArrived = true;
+            for(let fp of flyingPresents) {
+                fp.update();
+                if(!fp.arrived) allArrived = false;
+            }
+            
+            // If animation done or no score
+            if((allArrived && flyingPresents.length > 0 || (score === 0)) && !isTransitioning) {
+                 isTransitioning = true;
+                 setTimeout(() => gameOver(true), 800); // 800ms delay to admire the full sleigh
+            }
+        }
 
-    </div>
-  );
-}
+        // Camera follow
+        let targetCamX = player.x - canvas.width / 2 + player.width / 2;
+        targetCamX = Math.max(0, targetCamX); 
+        targetCamX = Math.min(targetCamX, levelPlan[0].length * TILE_SIZE - canvas.width); 
+        cameraX += (targetCamX - cameraX) * 0.1;
 
-function App() {
-  return (
-    <div className="App">
-      <EnterpriseSweeper />
-    </div>
-  )
-}
+        if (!isEnding) {
+            // Check Present Collection
+            for (let p of presents) {
+                if (p.active && rectIntersect(player.x, player.y, player.width, player.height, p.x, p.y, p.w, p.h)) {
+                    p.active = false;
+                    score++;
+                    document.getElementById('score').innerText = score;
+                }
+            }
 
-export default App;
+            // Check Powerup
+            if (powerup && powerup.active && rectIntersect(player.x, player.y, player.width, player.height, powerup.x, powerup.y, powerup.w, powerup.h)) {
+                powerup.active = false;
+                player.maxJumps = 2;
+                document.getElementById('powerupStatus').style.display = 'block';
+            }
+
+            // Check Spikes
+            for (let s of spikes) {
+                if (rectIntersect(player.x + 5, player.y + 5, player.width - 10, player.height - 10, s.x + 5, s.y, s.w - 10, s.h)) {
+                    gameOver(false);
+                }
+            }
+
+            // Check Win Condition (Touch Sleigh)
+            if (sleigh && rectIntersect(player.x, player.y, player.width, player.height, sleigh.x, sleigh.y, sleigh.w, sleigh.h)) {
+                startEndingSequence();
+            }
+        }
+
+        createSnowParticles();
+        updateParticles();
+    }
+
+    function drawSleigh(ctx, x, y) {
+        // Realistic Sleigh Drawing
+        const width = 100;
+        const height = 50;
+        
+        // Runners
+        ctx.strokeStyle = '#c0c0c0';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(x + 10, y + height);
+        ctx.lineTo(x + width - 10, y + height);
+        ctx.bezierCurveTo(x + width + 10, y + height, x + width + 10, y + height - 20, x + width - 5, y + height - 25);
+        ctx.moveTo(x + 25, y + height);
+        ctx.lineTo(x + 25, y + height - 15);
+        ctx.moveTo(x + 75, y + height);
+        ctx.lineTo(x + 75, y + height - 15);
+        ctx.stroke();
+
+        // Main Body
+        ctx.fillStyle = '#8b0000';
+        ctx.beginPath();
+        ctx.moveTo(x, y + 20);
+        ctx.bezierCurveTo(x - 10, y + 20, x - 5, y + height - 10, x + 20, y + height - 10);
+        ctx.lineTo(x + 80, y + height - 10);
+        ctx.bezierCurveTo(x + 100, y + height - 10, x + 100, y + 30, x + 80, y + 30);
+        ctx.lineTo(x + 20, y + 40); 
+        ctx.lineTo(x, y + 20);
+        ctx.fill();
+        
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = '#5d4037';
+        ctx.fillRect(x + 10, y + 35, 40, 5);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawParticles(ctx);
+
+        ctx.save();
+        ctx.translate(-Math.round(cameraX), 0);
+
+        // Draw Sleigh
+        if (sleigh) {
+            drawSleigh(ctx, sleigh.x, sleigh.y);
+        }
+
+        // Draw Tiles
+        for (let t of tiles) {
+            if (t.x + TILE_SIZE < cameraX || t.x > cameraX + canvas.width) continue;
+
+            if (t.type === 'snow') {
+                ctx.fillStyle = '#e1f5fe';
+                ctx.fillRect(t.x, t.y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#b3e5fc';
+                ctx.fillRect(t.x, t.y + TILE_SIZE - 5, TILE_SIZE, 5);
+                ctx.fillStyle = 'white';
+                ctx.fillRect(t.x, t.y, TILE_SIZE, 10);
+            } else if (t.type === 'ice') {
+                ctx.fillStyle = '#81d4fa';
+                ctx.fillRect(t.x, t.y, TILE_SIZE, TILE_SIZE / 2);
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(t.x, t.y, TILE_SIZE, TILE_SIZE / 2);
+            }
+        }
+
+        // Draw Spikes
+        for (let s of spikes) {
+             if (s.x + s.w < cameraX || s.x > cameraX + canvas.width) continue;
+             ctx.fillStyle = '#cfd8dc';
+             ctx.beginPath();
+             ctx.moveTo(s.x, s.y + s.h);
+             ctx.lineTo(s.x + s.w / 2, s.y);
+             ctx.lineTo(s.x + s.w, s.y + s.h);
+             ctx.fill();
+        }
+
+        // Draw Collectible Presents
+        for (let p of presents) {
+            if (!p.active) continue;
+            if (p.x + p.w < cameraX || p.x > cameraX + canvas.width) continue;
+            ctx.fillStyle = '#4caf50';
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.fillStyle = '#f44336';
+            ctx.fillRect(p.x + p.w/2 - 2, p.y, 4, p.h);
+            ctx.fillRect(p.x, p.y + p.h/2 - 2, p.w, 4);
+        }
+
+        // Draw Coin
+        if (powerup && powerup.active) {
+            if (coinImg.complete) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(powerup.x + 20, powerup.y + 20, 20, 0, Math.PI*2);
+                ctx.clip();
+                ctx.drawImage(coinImg, powerup.x, powerup.y, 40, 40);
+                ctx.restore();
+                
+                ctx.strokeStyle = '#ffd700';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(powerup.x + 20, powerup.y + 20, 20, 0, Math.PI*2);
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = 'gold';
+                ctx.beginPath();
+                ctx.arc(powerup.x + 20, powerup.y + 20, 15, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = 'black';
+                ctx.font = '20px Arial';
+                ctx.fillText('2x', powerup.x + 10, powerup.y + 27);
+            }
+        }
+        
+        // Draw Flying Presents (Animation)
+        for(let fp of flyingPresents) {
+            fp.draw(ctx);
+        }
+
+        player.draw(ctx, 0);
+
+        ctx.restore();
+    }
+
+    function loop() {
+        update();
+        draw();
+        animationFrameId = requestAnimationFrame(loop);
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+
+    function gameOver(isWin) {
+        gameActive = false;
+        won = isWin;
+        const overlay = document.getElementById('messageOverlay');
+        const title = document.getElementById('msgTitle');
+        const text = document.getElementById('msgText');
+        const btn = document.getElementById('startBtn');
+
+        overlay.classList.remove('hidden');
+
+        if (isWin) {
+            title.innerText = "Merry Christmas!";
+            title.style.color = "#4caf50";
+            if (score === totalPresents) {
+                text.innerText = "Amazing! Santa collected ALL the presents!";
+            } else {
+                text.innerText = `Santa is on his way, but you missed some presents (${score}/${totalPresents}).`;
+            }
+            btn.innerText = "Play Again";
+        } else {
+            title.innerText = "Oh no!";
+            title.style.color = "#ff4d4d";
+            text.innerText = "Santa got stuck!";
+            btn.innerText = "Try Again";
+        }
+    }
+
+    // --- Input Handling ---
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+        if ((e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space')) {
+            keys.up = true;
+            if(!e.repeat) keys.jumpPressed = true; 
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+        if (e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space') {
+            keys.up = false;
+        }
+    });
+
+    // Touch Controls
+    const btnLeft = document.getElementById('btnLeft');
+    const btnRight = document.getElementById('btnRight');
+    const btnJump = document.getElementById('btnJump');
+
+    const handleTouch = (btn, key, isJumpBtn) => {
+        const startHandler = (e) => {
+            e.preventDefault();
+            keys[key] = true;
+            if(isJumpBtn) keys.jumpPressed = true;
+            btn.style.backgroundColor = 'rgba(255,255,255,0.4)';
+        };
+        const endHandler = (e) => {
+            e.preventDefault();
+            keys[key] = false;
+            btn.style.backgroundColor = 'rgba(255,255,255,0.2)';
+        };
+        
+        btn.addEventListener('touchstart', startHandler);
+        btn.addEventListener('touchend', endHandler);
+        btn.addEventListener('mousedown', startHandler);
+        btn.addEventListener('mouseup', endHandler);
+    };
+
+    handleTouch(btnLeft, 'left', false);
+    handleTouch(btnRight, 'right', false);
+    handleTouch(btnJump, 'up', true);
+
+    document.getElementById('startBtn').addEventListener('click', () => {
+        document.getElementById('messageOverlay').classList.add('hidden');
+        initGame();
+    });
+
+    window.addEventListener('resize', resize);
+    
+    resize();
+    createSnowParticles(); 
+    setInterval(() => {
+        if(!gameActive) { 
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            updateParticles();
+            drawParticles(ctx);
+        }
+    }, 1000/60);
+
+</script>
+</body>
+</html>
