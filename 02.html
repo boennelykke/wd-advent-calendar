@@ -1,19 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, Bug, RefreshCw, Trophy, AlertTriangle, Clock, Activity, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, Bug, Trophy, AlertTriangle, Activity, CheckCircle } from 'lucide-react';
 
 // --- Constants & Config ---
 const BOARD_SIZE = 10;
 const MINE_COUNT = 15;
-const COLORS = {
-  workdayBlue: '#005cb9',
-  workdayOrange: '#e67300',
-  bg: '#f0f2f5',
-  cardBg: '#ffffff',
-  gridHidden: '#e2e8f0',
-  gridRevealed: '#f8fafc',
-};
-
-// --- Helper Functions ---
 
 // Directions for neighbor checking
 const DIRECTIONS = [
@@ -61,7 +51,8 @@ const createBoard = (size, mines) => {
   return board;
 };
 
-export default function App() {
+// --- Main Game Component ---
+function EnterpriseSweeper() {
   const [board, setBoard] = useState([]);
   const [gameState, setGameState] = useState('idle'); // idle, playing, won, lost
   const [flagsUsed, setFlagsUsed] = useState(0);
@@ -320,3 +311,13 @@ export default function App() {
     </div>
   );
 }
+
+function App() {
+  return (
+    <div className="App">
+      <EnterpriseSweeper />
+    </div>
+  )
+}
+
+export default App;
