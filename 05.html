@@ -26,6 +26,38 @@
             letter-spacing: 2px;
             pointer-events: none;
             transition: opacity 0.5s ease;
+            z-index: 10;
+        }
+        #start-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 5, 16, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            cursor: pointer;
+            transition: opacity 0.8s ease;
+        }
+        #start-btn {
+            padding: 15px 40px;
+            border: 1px solid #4aaef7;
+            color: #4aaef7;
+            background: rgba(0, 0, 0, 0.5);
+            font-size: 1.2rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            border-radius: 30px;
+            transition: all 0.3s ease;
+        }
+        #start-btn:hover {
+            background: #4aaef7;
+            color: #000510;
+            box-shadow: 0 0 20px #4aaef7;
         }
         .ui-overlay {
             position: absolute;
@@ -38,14 +70,19 @@
             font-size: 0.9rem;
             text-transform: uppercase;
             letter-spacing: 1px;
+            z-index: 5;
         }
     </style>
 </head>
 <body>
 
+    <div id="start-overlay">
+        <div id="start-btn">Enter Experience</div>
+    </div>
+
     <div id="loading">GENERATING LIGHTS...</div>
     <div id="canvas-container"></div>
-    <div class="ui-overlay">Hover to energize • Drag to rotate</div>
+    <div class="ui-overlay">Hover to energize • Spin to chime</div>
 
     <!-- Three.js and Post Processing -->
     <script type="importmap">
@@ -79,6 +116,79 @@
             bgColor: new THREE.Color('#000510')
         };
 
+        // --- Audio Context ---
+        let audioCtx;
+        let isAudioStarted = false;
+        let rotationSpeed = 0; // Tracks angular velocity
+
+        function initAudio() {
+            if (isAudioStarted) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            isAudioStarted = true;
+            scheduleBells();
+        }
+
+        function playBell(freq, duration, velocity) {
+            if (!audioCtx) return;
+            const t = audioCtx.currentTime;
+            
+            const masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination);
+            masterGain.gain.setValueAtTime(0, t);
+            // Attack
+            masterGain.gain.linearRampToValueAtTime(velocity, t + 0.02);
+            // Decay
+            masterGain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+            // Bell overtones
+            const overtones = [1, 2, 3.1, 4.2];
+            const overtoneGains = [1.0, 0.4, 0.2, 0.1];
+
+            overtones.forEach((mult, i) => {
+                const osc = audioCtx.createOscillator();
+                const gn = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq * mult;
+                osc.detune.value = (Math.random() - 0.5) * 10; 
+                gn.gain.value = overtoneGains[i];
+                osc.connect(gn);
+                gn.connect(masterGain);
+                osc.start(t);
+                osc.stop(t + duration);
+            });
+        }
+
+        function scheduleBells() {
+            if (!isAudioStarted) return;
+            
+            // Logic: Only play if rotating
+            // Threshold: 0.0005 covers very slow movement.
+            if (rotationSpeed < 0.0005) {
+                // Check back soon, but don't play
+                setTimeout(scheduleBells, 100);
+                return;
+            }
+
+            // Map intensity 0.0 -> 1.0 based on speed
+            // Auto-rotate is approx 0.003. Fast drag is 0.05+
+            const intensity = Math.min(rotationSpeed / 0.02, 1.0);
+
+            // Pentatonic-ish scale frequencies
+            const scale = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50]; 
+            const freq = scale[Math.floor(Math.random() * scale.length)];
+            
+            // Louder if spinning faster
+            playBell(freq, 4.0, 0.05 + intensity * 0.3);
+
+            // Faster spin = more frequent bells
+            // Intensity 1.0 -> 150ms delay
+            // Intensity 0.1 -> 1500ms delay
+            const nextDelay = 1500 - (intensity * 1350) + (Math.random() * 300);
+            
+            setTimeout(scheduleBells, nextDelay);
+        }
+
         // --- Scene Setup ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
@@ -86,7 +196,10 @@
         scene.fog = new THREE.FogExp2(CONFIG.bgColor, 0.025);
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
-        camera.position.set(0, 15, 60);
+        
+        // Start from PERFECT TOP MIDDLE looking DOWN (90 degrees)
+        camera.position.set(0, 100, 0.1); 
+        camera.lookAt(0, 0, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -99,24 +212,22 @@
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
-        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent going below ground
-        controls.minDistance = 20;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; 
+        controls.minDistance = 5; // Reduced from 20 to allow deeper zoom
         controls.maxDistance = 100;
-        controls.autoRotate = true;
-        controls.autoRotateSpeed = 0.5;
+        controls.autoRotate = false; // Disabled: Silent until user interacts
+        controls.autoRotateSpeed = 1.0; 
 
-        // --- Raycaster for "Mouse World Position" ---
+        // --- Raycaster ---
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         const planeGeometry = new THREE.PlaneGeometry(200, 200);
         const planeMaterial = new THREE.MeshBasicMaterial({ visible: false });
         const interactionPlane = new THREE.Mesh(planeGeometry, planeMaterial);
-        // Plane faces camera mostly
-        interactionPlane.rotation.x = 0; 
+        interactionPlane.rotation.x = -Math.PI / 2;
         scene.add(interactionPlane);
 
         // --- Shader Material ---
-        // This simulates the behavior of particles on the GPU
         const particleVertexShader = `
             uniform float uTime;
             uniform float uPixelRatio;
@@ -132,34 +243,25 @@
 
             void main() {
                 vec3 pos = position;
-
-                // Gentle organic movement (Wind)
                 float sway = sin(uTime * aSpeed + pos.y * 0.5) * 0.2;
                 pos.x += sway;
                 pos.z += sway * 0.5;
 
-                // Mouse Interaction (Repel/Excite)
-                // We calculate distance to the mouse cursor in world space
                 float dist = distance(pos, uMouseWorld);
-                vDistToMouse = dist; // Pass to fragment
+                vDistToMouse = dist; 
 
-                // "Excitement" effect if near mouse
                 float influenceRadius = 12.0;
                 float excitement = smoothstep(influenceRadius, 0.0, dist);
                 
-                // Expand outward slightly when excited
                 vec3 dir = normalize(pos - uMouseWorld);
                 pos += dir * excitement * 1.5;
 
                 vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
                 gl_Position = projectionMatrix * mvPosition;
 
-                // Size attenuation (bigger when closer to camera)
-                // Plus bonus size when excited
                 float outputSize = aSize * (1.0 + excitement * 1.5);
                 gl_PointSize = outputSize * uPixelRatio * (200.0 / -mvPosition.z);
                 
-                // Pass color
                 vColor = aColor;
             }
         `;
@@ -170,26 +272,18 @@
             varying float vDistToMouse;
 
             void main() {
-                // Circular particle shape
                 float r = distance(gl_PointCoord, vec2(0.5));
                 if (r > 0.5) discard;
 
-                // Soft glow edge
                 float glow = 1.0 - (r * 2.0);
                 glow = pow(glow, 1.5);
 
-                // Interaction Color Shift
-                // If close to mouse, shift towards bright white/cyan
                 float influenceRadius = 12.0;
                 float excitement = smoothstep(influenceRadius, 0.0, vDistToMouse);
                 
                 vec3 finalColor = mix(vColor, vec3(0.8, 0.95, 1.0), excitement);
-                
-                // Twinkle effect
                 float twinkle = sin(uTime * 3.0 + vDistToMouse) * 0.5 + 0.5;
                 finalColor += twinkle * 0.2;
-
-                // Increase brightness for bloom interaction
                 finalColor *= (1.0 + excitement * 2.0);
 
                 gl_FragColor = vec4(finalColor, glow);
@@ -208,41 +302,24 @@
         const colorRed = new THREE.Color(0xff3333);
         const colorGold = new THREE.Color(0xffd700);
 
-        // 1. Tree Lights
         for (let i = 0; i < CONFIG.particleCount; i++) {
-            // Conical Spiral
-            const t = i / CONFIG.particleCount; // 0 to 1
+            const t = i / CONFIG.particleCount;
             const angle = t * Math.PI * 2 * CONFIG.spiralTurns;
-            
-            // Radius gets smaller as we go up
             const currentRadius = (1 - t) * CONFIG.baseRadius;
-            
-            // Add some noise to radius for volume
             const randomRadius = currentRadius + (Math.random() - 0.5) * 2.0;
 
             const x = Math.cos(angle) * randomRadius;
-            const y = t * CONFIG.treeHeight - (CONFIG.treeHeight / 2) + 5; // Offset y
+            const y = t * CONFIG.treeHeight - (CONFIG.treeHeight / 2) + 5;
             const z = Math.sin(angle) * randomRadius;
 
             positions.push(x, y, z);
 
-            // Logic for Color Distribution
-            // Mostly green, some gold, rare red
             const colorRand = Math.random();
             let c;
             let size = 0.5 + Math.random() * 0.5;
-
-            if (colorRand > 0.9) {
-                c = colorRed; // Ornaments
-                size *= 1.5;
-            } else if (colorRand > 0.75) {
-                c = colorGold; // Lights
-                size *= 1.2;
-            } else {
-                c = colorGreen; // Needles/Tree structure
-                // Vary green slightly
-                c = c.clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.1);
-            }
+            if (colorRand > 0.9) { c = colorRed; size *= 1.5; }
+            else if (colorRand > 0.75) { c = colorGold; size *= 1.2; }
+            else { c = colorGreen; c = c.clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.1); }
 
             colors.push(c.r, c.g, c.b);
             sizes.push(size);
@@ -250,33 +327,14 @@
             speeds.push(0.5 + Math.random());
         }
 
-        // 2. Star on Top
-        const starPoints = 50;
-        for(let i=0; i<starPoints; i++) {
-            positions.push(
-                (Math.random() - 0.5) * 1.5,
-                CONFIG.treeHeight / 2 + 5 + Math.random() * 1.5,
-                (Math.random() - 0.5) * 1.5
-            );
-            colors.push(1.0, 1.0, 0.8); // Bright yellowish white
-            sizes.push(2.0);
-            randomness.push(Math.random());
-            speeds.push(0.0);
+        // Star and Snow
+        for(let i=0; i<50; i++) {
+            positions.push((Math.random()-0.5)*1.5, CONFIG.treeHeight/2+5+Math.random()*1.5, (Math.random()-0.5)*1.5);
+            colors.push(1.0, 1.0, 0.8); sizes.push(2.0); randomness.push(Math.random()); speeds.push(0.0);
         }
-
-        // 3. Falling Snow / Ambient Dust
-        const snowCount = 2000;
-        const snowRange = 80;
-        for(let i=0; i<snowCount; i++) {
-            positions.push(
-                (Math.random() - 0.5) * snowRange,
-                (Math.random() - 0.5) * snowRange + 20,
-                (Math.random() - 0.5) * snowRange
-            );
-            colors.push(0.8, 0.8, 1.0); // Blueish white
-            sizes.push(0.3);
-            randomness.push(Math.random());
-            speeds.push(0.2 + Math.random() * 0.5);
+        for(let i=0; i<2000; i++) {
+            positions.push((Math.random()-0.5)*80, (Math.random()-0.5)*80+20, (Math.random()-0.5)*80);
+            colors.push(0.8, 0.8, 1.0); sizes.push(0.3); randomness.push(Math.random()); speeds.push(0.2+Math.random()*0.5);
         }
 
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -285,14 +343,13 @@
         geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randomness, 1));
         geometry.setAttribute('aSpeed', new THREE.Float32BufferAttribute(speeds, 1));
 
-        // Uniforms for Shader
         const material = new THREE.ShaderMaterial({
             vertexShader: particleVertexShader,
             fragmentShader: particleFragmentShader,
             uniforms: {
                 uTime: { value: 0 },
                 uPixelRatio: { value: renderer.getPixelRatio() },
-                uMouseWorld: { value: new THREE.Vector3(999, 999, 999) } // Default far away
+                uMouseWorld: { value: new THREE.Vector3(999, 999, 999) }
             },
             transparent: true,
             depthWrite: false,
@@ -302,14 +359,11 @@
         const treeSystem = new THREE.Points(geometry, material);
         scene.add(treeSystem);
 
-        // --- Floor Reflection (Simple Grid) ---
         const gridHelper = new THREE.PolarGridHelper(40, 16, 8, 64, 0x1a2b4b, 0x0f1b2d);
         gridHelper.position.y = -CONFIG.treeHeight/2 + 5;
         scene.add(gridHelper);
 
-        // --- Post Processing (Bloom) ---
         const renderScene = new RenderPass(scene, camera);
-        
         const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
         bloomPass.threshold = CONFIG.bloomThreshold;
         bloomPass.strength = CONFIG.bloomStrength;
@@ -322,74 +376,89 @@
         // --- Interaction Logic ---
         let targetMouseWorld = new THREE.Vector3(999, 999, 999);
 
-        function onMouseMove(event) {
-            // Normalized device coordinates
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-            // Make the interaction plane face the camera roughly so raycasting works from any angle
-            interactionPlane.lookAt(camera.position);
-
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObject(interactionPlane);
-
-            if (intersects.length > 0) {
-                targetMouseWorld.copy(intersects[0].point);
-            }
-        }
-        
-        // Touch support
-        function onTouchMove(event) {
-            if (event.touches.length > 0) {
-                const touch = event.touches[0];
-                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
-                
-                interactionPlane.lookAt(camera.position);
-                raycaster.setFromCamera(mouse, camera);
-                const intersects = raycaster.intersectObject(interactionPlane);
-
-                if (intersects.length > 0) {
-                    targetMouseWorld.copy(intersects[0].point);
-                }
-            }
+        function updateMouse(x, y) {
+             mouse.x = (x / window.innerWidth) * 2 - 1;
+             mouse.y = -(y / window.innerHeight) * 2 + 1;
+             interactionPlane.lookAt(camera.position);
+             raycaster.setFromCamera(mouse, camera);
+             const intersects = raycaster.intersectObject(interactionPlane);
+             if (intersects.length > 0) targetMouseWorld.copy(intersects[0].point);
         }
 
-        window.addEventListener('mousemove', onMouseMove);
-        window.addEventListener('touchmove', onTouchMove);
+        window.addEventListener('mousemove', (e) => updateMouse(e.clientX, e.clientY));
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) updateMouse(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        const startOverlay = document.getElementById('start-overlay');
+        startOverlay.addEventListener('click', () => {
+            startOverlay.style.opacity = 0;
+            setTimeout(() => { startOverlay.style.display = 'none'; }, 800);
+            initAudio();
+        });
 
         // --- Animation Loop ---
         const clock = new THREE.Clock();
+        let lastAngle = 0; // Initialize angle tracker
+
+        // Camera Animation State
+        let isZoomingIn = true;
+        const zoomSpeed = 0.05;
+        const minZoomDist = 15; // How close it gets to the middle
+        const maxZoomDist = 100; // The starting height
 
         function animate() {
             requestAnimationFrame(animate);
-
             const elapsedTime = clock.getElapsedTime();
 
-            // Update Shader Uniforms
             material.uniforms.uTime.value = elapsedTime;
-
-            // Smoothly interpolate mouse position for fluid effect
             const currentMouse = material.uniforms.uMouseWorld.value;
             currentMouse.lerp(targetMouseWorld, 0.1); 
-
-            // Rotate tree slightly for ambient movement
+            
             treeSystem.rotation.y = Math.sin(elapsedTime * 0.1) * 0.1;
 
-            // Snow falling effect simulation logic (manual position update for wrapping)
-            // Note: In a pure shader approach we'd do this in GLSL, but wrapping is easier in JS for simplicity
-            // However, our shader handles wind. We will let the shader handle visuals.
+            // Continuous Zoom/Return Logic
+            const currentDist = camera.position.length();
+
+            if (isZoomingIn) {
+                // Zoom in
+                camera.translateZ(-zoomSpeed);
+                if (currentDist < minZoomDist) {
+                    isZoomingIn = false;
+                }
+            } else {
+                // Pan back to start
+                camera.translateZ(zoomSpeed);
+                if (currentDist > maxZoomDist) {
+                    isZoomingIn = true;
+                    // Snap to exact start to prevent drift over many cycles
+                    camera.position.set(0, 100, 0.1);
+                    camera.lookAt(0, 0, 0);
+                }
+            }
             
-            // Auto-rotate camera if not interacting
             controls.update();
+            
+            // Calculate Angular Velocity for Audio
+            const currentAngle = controls.getAzimuthalAngle();
+            if (lastAngle !== undefined) {
+                let delta = Math.abs(currentAngle - lastAngle);
+                // Handle wrap-around (0 to 2PI transition)
+                if (delta > Math.PI) delta = 2 * Math.PI - delta;
+                
+                // Smooth the value slightly for consistent audio triggers
+                rotationSpeed = THREE.MathUtils.lerp(rotationSpeed, delta, 0.1);
+            }
+            lastAngle = currentAngle;
 
             composer.render();
         }
 
-        // Remove loading text
+        // Initialize lastAngle
+        lastAngle = controls.getAzimuthalAngle();
+
         document.getElementById('loading').style.opacity = 0;
 
-        // Resize handling
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
