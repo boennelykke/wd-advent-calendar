@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dreamy Winter Flight</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #AEC6CF; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            pointer-events: none;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            opacity: 0.8;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">Move cursor to steer • Click for Snow Burst</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+
+    <script>
+        // --- Configuration ---
+        const CONFIG = {
+            speed: 0.4,
+            turnSpeed: 0.001,
+            colors: [
+                new THREE.Color('#E0F7FA'), // Light Cyan (Ice)
+                new THREE.Color('#B3E5FC'), // Light Blue
+                new THREE.Color('#0277BD'), // Darker Blue
+                new THREE.Color('#004D40'), // Dark Teal/Green (Forest hint)
+                new THREE.Color('#1B5E20'), // Dark Green (Forest)
+            ],
+            fogColor: 0xD1E8F0, // Icy fog
+            groundSize: 400,
+            chunkSize: 200
+        };
+
+        // --- Setup Scene ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(CONFIG.fogColor);
+        scene.fog = new THREE.FogExp2(CONFIG.fogColor, 0.008);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 15, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // --- Lighting ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x0000ff, 0.6);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(100, 200, 50);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 500;
+        dirLight.shadow.camera.left = -100;
+        dirLight.shadow.camera.right = 100;
+        dirLight.shadow.camera.top = 100;
+        dirLight.shadow.camera.bottom = -100;
+        scene.add(dirLight);
+
+        // --- Helper: Noise for Terrain ---
+        const simplex = new SimplexNoise();
+        
+        // --- Materials ---
+        const groundMaterial = new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            roughness: 0.8,
+            metalness: 0.1,
+            flatShading: false
+        });
+
+        const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4E342E });
+        const treeLeavesMat = new THREE.MeshStandardMaterial({ 
+            color: 0x2E7D32, // More realistic pine green
+            roughness: 0.9,
+            metalness: 0.1 
+        });
+        const snowCapMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+        // --- Procedural Generation ---
+        
+        const chunks = [];
+        // Forest timer logic
+        let lastForestTime = 0;
+        
+        function getNoiseHeight(x, z) {
+            let y = simplex.noise2D(x * 0.01, z * 0.01) * 10;
+            y += simplex.noise2D(x * 0.03, z * 0.03) * 2;
+            y += simplex.noise2D(x * 0.1, z * 0.1) * 0.2; 
+            y += simplex.noise2D(x * 0.2, z * 0.2) * 0.1;
+            y = Math.max(-10, y); 
+            return y;
+        }
+
+        function getColorForHeight(y, x, z) {
+            const noiseVal = simplex.noise2D(x * 0.02, z * 0.02);
+            const band = Math.sin(y * 0.1 + x * 0.05 + z * 0.02 + noiseVal * 2);
+            const normalized = (band + 1) / 2;
+            const index = Math.floor(normalized * CONFIG.colors.length);
+            return CONFIG.colors[Math.min(index, CONFIG.colors.length - 1)];
+        }
+
+        function createChunk(offsetZ) {
+            const size = CONFIG.chunkSize;
+            const res = 250; // Optimized quality
+            const geometry = new THREE.PlaneGeometry(size, size, res, res);
+            
+            const count = geometry.attributes.position.count;
+            const colors = [];
+            
+            for (let i = 0; i < count; i++) {
+                const x = geometry.attributes.position.getX(i);
+                const zLocal = geometry.attributes.position.getY(i);
+                const zWorld = zLocal - offsetZ;
+                
+                const h = getNoiseHeight(x, zWorld);
+                geometry.attributes.position.setZ(i, h);
+                
+                const color = getColorForHeight(h, x, zWorld);
+                colors.push(color.r, color.g, color.b);
+            }
+            
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.computeVertexNormals();
+
+            const mesh = new THREE.Mesh(geometry, groundMaterial);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.position.z = -offsetZ;
+            mesh.receiveShadow = true;
+            
+            // --- Tree Logic ---
+            // Determine if this is a forest chunk based on time or random chance
+            const now = Date.now();
+            let isForest = false;
+            
+            // If it's been ~5 seconds since last forest (approx 5000ms), make a forest
+            // We use a bit of randomness so it's not perfectly robotic
+            if (now - lastForestTime > 5000) {
+                isForest = true;
+                lastForestTime = now;
+            }
+
+            const treeCount = isForest ? 120 : 15; // Dense vs Sparse
+            
+            // Geometries
+            const trunkGeo = new THREE.CylinderGeometry(0.2, 0.4, 1.5, 6);
+            // Use Cone for more pine-tree look
+            const leafGeo = new THREE.ConeGeometry(1.5, 4, 8);
+
+            for(let i=0; i<treeCount; i++) {
+                const tx = (Math.random() - 0.5) * size;
+                const tzLocal = (Math.random() - 0.5) * size;
+                const tzWorld = tzLocal - offsetZ;
+                
+                const ty = getNoiseHeight(tx, tzWorld);
+                
+                if(ty < -5) continue;
+
+                const trunk = new THREE.Mesh(trunkGeo, treeTrunkMat);
+                trunk.position.set(tx, ty + 0.75, tzLocal - offsetZ);
+                trunk.castShadow = true;
+                trunk.receiveShadow = true;
+                
+                // Leaves (Pine style)
+                const leaves = new THREE.Mesh(leafGeo, treeLeavesMat);
+                leaves.position.set(0, 2.5, 0);
+                trunk.add(leaves);
+
+                // Snow cap on tree
+                if (Math.random() > 0.3) {
+                    const cap = new THREE.Mesh(new THREE.ConeGeometry(1.2, 1, 8), snowCapMat);
+                    cap.position.set(0, 1, 0); // relative to leaves center (roughly)
+                    leaves.add(cap);
+                }
+                
+                const s = 0.8 + Math.random() * 0.6;
+                trunk.scale.set(s,s,s);
+                
+                mesh.add(trunk);
+                
+                trunk.rotation.x = Math.PI / 2;
+                trunk.position.set(tx, tzLocal, ty);
+                trunk.position.z += 0.5;
+            }
+
+            scene.add(mesh);
+            return { mesh: mesh, z: -offsetZ };
+        }
+
+        // --- Improved Santa Claus ---
+        const santaGroup = new THREE.Group();
+        let santaActive = false;
+        
+        function initSanta() {
+            // 1. The Sleigh
+            const sleighGroup = new THREE.Group();
+            
+            // Base
+            const baseGeo = new THREE.BoxGeometry(2.5, 0.5, 4);
+            const redMat = new THREE.MeshStandardMaterial({ color: 0xD32F2F, roughness: 0.3 });
+            const base = new THREE.Mesh(baseGeo, redMat);
+            sleighGroup.add(base);
+            
+            // Side rails
+            const railGeo = new THREE.BoxGeometry(3, 1.5, 0.2);
+            const leftRail = new THREE.Mesh(railGeo, redMat);
+            leftRail.position.set(0, 0.5, -1.8);
+            // Curve the top
+            const rightRail = new THREE.Mesh(railGeo, redMat);
+            rightRail.position.set(0, 0.5, 1.8);
+            sleighGroup.add(leftRail);
+            sleighGroup.add(rightRail);
+
+            // Runners (Gold)
+            const runnerMat = new THREE.MeshStandardMaterial({ color: 0xFFD700, metalness: 0.8 });
+            const runnerGeo = new THREE.BoxGeometry(3.5, 0.1, 0.2);
+            const leftRunner = new THREE.Mesh(runnerGeo, runnerMat);
+            leftRunner.position.set(0, -0.5, -1.8);
+            const rightRunner = new THREE.Mesh(runnerGeo, runnerMat);
+            rightRunner.position.set(0, -0.5, 1.8);
+            sleighGroup.add(leftRunner);
+            sleighGroup.add(rightRunner);
+
+            // Santa Body
+            const bodyGeo = new THREE.CylinderGeometry(0.6, 0.8, 1.2, 8);
+            const body = new THREE.Mesh(bodyGeo, redMat);
+            body.position.set(0, 1, 0);
+            sleighGroup.add(body);
+
+            // Head
+            const headGeo = new THREE.SphereGeometry(0.4, 8, 8);
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xFFCCBC });
+            const head = new THREE.Mesh(headGeo, skinMat);
+            head.position.set(0, 1.8, 0);
+            sleighGroup.add(head);
+
+            // Hat
+            const hatGeo = new THREE.ConeGeometry(0.4, 0.8, 8);
+            const hat = new THREE.Mesh(hatGeo, redMat);
+            hat.rotation.x = -0.2;
+            hat.position.set(0, 2.2, -0.1);
+            sleighGroup.add(hat);
+
+            // Sack
+            const sackGeo = new THREE.SphereGeometry(0.9, 8, 8);
+            const sackMat = new THREE.MeshStandardMaterial({ color: 0x8D6E63 });
+            const sack = new THREE.Mesh(sackGeo, sackMat);
+            sack.position.set(-1.2, 1, 0);
+            sleighGroup.add(sack);
+
+            santaGroup.add(sleighGroup);
+
+            // 2. Reindeer
+            const deerColor = new THREE.MeshStandardMaterial({ color: 0x5D4037 });
+            const antlerColor = new THREE.MeshStandardMaterial({ color: 0xF5F5DC });
+
+            for(let i=1; i<=4; i++) {
+                const zDist = 1.0; 
+                const xDist = 3 + (i * 2.5); // Forward distance from sleigh
+                
+                // Pair of deer
+                [-1, 1].forEach(side => {
+                    const deer = new THREE.Group();
+                    
+                    // Body
+                    const dBody = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 1.2, 6), deerColor);
+                    dBody.rotation.z = Math.PI / 2;
+                    deer.add(dBody);
+                    
+                    // Neck & Head
+                    const dNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.6, 6), deerColor);
+                    dNeck.position.set(0.6, 0.5, 0);
+                    dNeck.rotation.z = -Math.PI / 4;
+                    deer.add(dNeck);
+
+                    const dHead = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.5), deerColor);
+                    dHead.position.set(0.9, 0.8, 0);
+                    deer.add(dHead);
+
+                    // Antlers
+                    const antlerL = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6), antlerColor);
+                    antlerL.position.set(0.9, 1.1, 0.15);
+                    antlerL.rotation.x = 0.5;
+                    deer.add(antlerL);
+                    
+                    const antlerR = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6), antlerColor);
+                    antlerR.position.set(0.9, 1.1, -0.15);
+                    antlerR.rotation.x = -0.5;
+                    deer.add(antlerR);
+
+                    // Legs
+                    const legGeo = new THREE.CylinderGeometry(0.08, 0.05, 0.8);
+                    const l1 = new THREE.Mesh(legGeo, deerColor); l1.position.set(-0.4, -0.6, 0.15);
+                    const l2 = new THREE.Mesh(legGeo, deerColor); l2.position.set(-0.4, -0.6, -0.15);
+                    const l3 = new THREE.Mesh(legGeo, deerColor); l3.position.set(0.4, -0.6, 0.15);
+                    const l4 = new THREE.Mesh(legGeo, deerColor); l4.position.set(0.4, -0.6, -0.15);
+                    deer.add(l1); deer.add(l2); deer.add(l3); deer.add(l4);
+
+                    // Positioning
+                    deer.position.set(xDist, 0, side * zDist);
+                    // Rotate entire group so X is forward for deer group, but our world moves Z.
+                    // Actually, sleigh faces +X in its local space. 
+                    // Let's rotate the deer to face +X (which is 'forward' for the sleigh group)
+                    // The Cylinder body was rotated Z=90, so it points along X.
+                    
+                    // Animate legs later? For now static.
+                    santaGroup.add(deer);
+                });
+            }
+            
+            santaGroup.rotation.y = -Math.PI / 2; // Face -Z (forward)? 
+            // Wait, we want Santa to fly Left to Right.
+            // Left is -X, Right is +X.
+            // So Santa should face +X.
+            santaGroup.rotation.y = 0; // Default facing is +X
+
+            santaGroup.position.set(-200, 1000, 0);
+            scene.add(santaGroup);
+        }
+        initSanta();
+
+        // --- Clouds ---
+        const cloudParticles = [];
+        const cloudGeo = new THREE.SphereGeometry(1, 16, 16); // Base cloud puff
+        const cloudMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.6,
+            flatShading: true
+        });
+
+        function initClouds() {
+            for(let i=0; i<30; i++) {
+                const group = new THREE.Group();
+                const puffs = 3 + Math.floor(Math.random() * 5);
+                
+                for(let j=0; j<puffs; j++) {
+                    const puff = new THREE.Mesh(cloudGeo, cloudMat);
+                    puff.position.set(
+                        (Math.random() - 0.5) * 3,
+                        (Math.random() - 0.5) * 1.5,
+                        (Math.random() - 0.5) * 2
+                    );
+                    const scale = 1 + Math.random() * 2;
+                    puff.scale.set(scale, scale, scale);
+                    group.add(puff);
+                }
+                
+                group.position.set(
+                    (Math.random() - 0.5) * 400,
+                    20 + Math.random() * 20,
+                    -Math.random() * 500
+                );
+                
+                scene.add(group);
+                cloudParticles.push(group);
+            }
+        }
+        initClouds();
+
+        // --- Snow ---
+        const snowGeo = new THREE.BufferGeometry();
+        const snowCount = 2000;
+        const snowPositions = new Float32Array(snowCount * 3);
+        const snowVelocities = [];
+
+        for (let i = 0; i < snowCount; i++) {
+            snowPositions[i * 3] = (Math.random() - 0.5) * 400; // x
+            snowPositions[i * 3 + 1] = Math.random() * 100 + 20; // y
+            snowPositions[i * 3 + 2] = (Math.random() - 0.5) * 400 - 100; // z
+            snowVelocities.push(0.1 + Math.random() * 0.2); // Falling speed
+        }
+
+        snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPositions, 3));
+        const snowMat = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.5,
+            transparent: true,
+            opacity: 0.8
+        });
+        const snowParticles = new THREE.Points(snowGeo, snowMat);
+        scene.add(snowParticles);
+
+        // --- Snow Burst Logic ---
+        const bursts = [];
+        
+        function createSnowBurst() {
+            const burstCount = 5000;
+            const burstGeo = new THREE.BufferGeometry();
+            const positions = new Float32Array(burstCount * 3);
+            const velocities = [];
+
+            for(let i=0; i<burstCount; i++) {
+                // Spawn above camera
+                positions[i*3] = camera.position.x + (Math.random() - 0.5) * 150;
+                positions[i*3+1] = camera.position.y + 40 + Math.random() * 20;
+                positions[i*3+2] = camera.position.z + (Math.random() - 0.5) * 100 - 20;
+
+                // Fast downward velocity
+                velocities.push({
+                    y: -0.5 - Math.random() * 0.5,
+                    x: (Math.random() - 0.5) * 0.2,
+                    z: (Math.random() - 0.5) * 0.2
+                });
+            }
+
+            burstGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const burstMat = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.6,
+                transparent: true,
+                opacity: 1
+            });
+
+            const burstSystem = new THREE.Points(burstGeo, burstMat);
+            scene.add(burstSystem);
+            
+            bursts.push({
+                mesh: burstSystem,
+                velocities: velocities,
+                age: 0,
+                lifespan: 150 // frames
+            });
+        }
+
+        window.addEventListener('click', createSnowBurst);
+
+        // --- Input Handling ---
+        let mouseX = 0;
+        let mouseY = 0;
+        
+        document.addEventListener('touchstart', onTouchMove, {passive: false});
+        document.addEventListener('touchmove', onTouchMove, {passive: false});
+        
+        function onTouchMove(event) {
+            if(event.type === 'touchmove') event.preventDefault();
+            const touch = event.touches[0];
+            mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        document.addEventListener('mousemove', (event) => {
+            mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        // --- Initialization ---
+        // Create initial chunks
+        for(let i=0; i<4; i++) {
+            chunks.push(createChunk(i * CONFIG.chunkSize));
+        }
+
+        // --- Animation Loop ---
+        let flySpeed = CONFIG.speed;
+        let targetCamX = 0;
+        let targetCamY = 15;
+        let startTime = Date.now();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const now = Date.now();
+            const elapsedSeconds = (now - startTime) / 1000;
+
+            // 1. Move Camera Forward
+            camera.position.z -= flySpeed;
+
+            // 2. Handle Steering
+            targetCamX = mouseX * 40; 
+            targetCamY = 15 + mouseY * 10; 
+            
+            camera.position.x += (targetCamX - camera.position.x) * 0.05;
+            camera.position.y += (targetCamY - camera.position.y) * 0.05;
+            camera.rotation.z = -mouseX * 0.2;
+            
+            camera.lookAt(
+                camera.position.x * 0.8, 
+                camera.position.y, 
+                camera.position.z - 50
+            );
+
+            // 3. Infinite Terrain Logic
+            const firstChunk = chunks[0];
+            if (camera.position.z < firstChunk.z - CONFIG.chunkSize) {
+                scene.remove(firstChunk.mesh);
+                chunks.shift(); 
+                
+                const lastChunkZ = chunks[chunks.length - 1].z;
+                const newZ = lastChunkZ - CONFIG.chunkSize;
+                chunks.push(createChunk(-newZ)); 
+            }
+
+            // 4. Animate Snow
+            const positions = snowGeo.attributes.position.array;
+            for (let i = 0; i < snowCount; i++) {
+                positions[i * 3 + 1] -= snowVelocities[i];
+                positions[i * 3 + 2] -= flySpeed * 0.8; 
+
+                if (positions[i * 3 + 1] < -10 || positions[i * 3 + 2] > camera.position.z + 50) {
+                    positions[i * 3] = camera.position.x + (Math.random() - 0.5) * 300;
+                    positions[i * 3 + 1] = camera.position.y + Math.random() * 50 + 30;
+                    positions[i * 3 + 2] = camera.position.z - (Math.random() * 300 + 50);
+                }
+            }
+            snowGeo.attributes.position.needsUpdate = true;
+            snowParticles.position.x = camera.position.x * 0.5;
+
+            // 4.5 Animate Snow Bursts
+            for (let i = bursts.length - 1; i >= 0; i--) {
+                const burst = bursts[i];
+                burst.age++;
+                
+                const bPos = burst.mesh.geometry.attributes.position.array;
+                
+                for(let j=0; j<burst.velocities.length; j++) {
+                    bPos[j*3] += burst.velocities[j].x;
+                    bPos[j*3+1] += burst.velocities[j].y;
+                    bPos[j*3+2] += burst.velocities[j].z - flySpeed; 
+                }
+                
+                burst.mesh.geometry.attributes.position.needsUpdate = true;
+                
+                if(burst.age > burst.lifespan - 50) burst.mesh.material.opacity -= 0.02;
+
+                if(burst.age >= burst.lifespan) {
+                    scene.remove(burst.mesh);
+                    burst.mesh.geometry.dispose();
+                    burst.mesh.material.dispose();
+                    bursts.splice(i, 1);
+                }
+            }
+
+            // 5. Animate Clouds
+            cloudParticles.forEach(cloud => {
+                cloud.position.z += flySpeed * 0.5;
+                if(cloud.position.z > camera.position.z + 10) {
+                    cloud.position.z -= 600; 
+                    cloud.position.x = camera.position.x + (Math.random() - 0.5) * 400;
+                }
+            });
+
+            // 6. Santa Logic
+            if (elapsedSeconds > 8 && !santaActive) {
+                santaActive = true;
+                santaGroup.position.set(
+                    camera.position.x - 250, 
+                    camera.position.y + 40, 
+                    camera.position.z - 80
+                );
+                santaGroup.rotation.z = 0.1;
+            }
+
+            if (santaActive) {
+                // Move much slower: Was 1.5, now 0.4
+                santaGroup.position.x += 0.4; 
+                santaGroup.position.y += Math.sin(now * 0.003) * 0.1;
+                santaGroup.position.z -= flySpeed; // Match camera forward speed
+                
+                // Reindeer running animation (simple bobbing)
+                santaGroup.children.forEach((child, index) => {
+                    if (index > 0) { // Skip sleigh
+                       child.position.y = Math.sin(now * 0.01 + index) * 0.5;
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
