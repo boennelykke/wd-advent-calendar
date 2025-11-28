@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Atmospheric Interactive Christmas Tree</title>
+    <title>05: Atmospheric Interactive Christmas Tree</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #00152D; /* Deep midnight blue */
-            font-family: 'Workday Headline'.'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #000510; /* Deep midnight blue */
+            font-family: 'Workday Headline','Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         #canvas-container {
             width: 100vw;
@@ -48,7 +48,7 @@
             border: 1px solid #4aaef7;
             color: #4aaef7;
             background: rgba(0, 0, 0, 0.5);
-            font-size: 1.2rem;
+            font-size: 1.5rem;
             letter-spacing: 3px;
             text-transform: uppercase;
             border-radius: 30px;
@@ -77,12 +77,12 @@
 <body>
 
     <div id="start-overlay">
-        <div id="start-btn">Enter Experience</div>
+        <div id="start-btn">Enter to See..</div>
     </div>
 
     <div id="loading">GENERATING LIGHTS...</div>
     <div id="canvas-container"></div>
-    <div class="ui-overlay">Hover to energize • Spin to chime</div>
+    <div class="ui-overlay">Hover to Elevate • Spin to chime</div>
 
     <!-- Three.js and Post Processing -->
     <script type="importmap">
@@ -103,17 +103,17 @@
 
         // --- Configuration ---
         const CONFIG = {
-            particleCount: 15000,
+            particleCount: 25000,
             treeHeight: 45,
-            baseRadius: 18,
+            baseRadius: 22,
             spiralTurns: 12,
-            bloomStrength: 1.5,
+            bloomStrength: 1.8,
             bloomRadius: 0.4,
             bloomThreshold: 0.1,
             colorBase: new THREE.Color('#0f4c3a'), // Deep Green
             colorLight: new THREE.Color('#d4af37'), // Gold
             colorHot: new THREE.Color('#ffffff'),   // White/Cyan
-            bgColor: new THREE.Color('#000510')
+            bgColor: new THREE.Color('#001329')
         };
 
         // --- Audio Context ---
@@ -213,7 +213,7 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.maxPolarAngle = Math.PI / 2 - 0.05; 
-        controls.minDistance = 5; // Reduced from 20 to allow deeper zoom
+        controls.minDistance = 2; // Reduced from 20 to allow deeper zoom
         controls.maxDistance = 100;
         controls.autoRotate = false; // Disabled: Silent until user interacts
         controls.autoRotateSpeed = 1.0; 
@@ -403,8 +403,8 @@
 
         // Camera Animation State
         let isZoomingIn = true;
-        const zoomSpeed = 0.05;
-        const minZoomDist = 15; // How close it gets to the middle
+        const zoomSpeed = 0.03;
+        const minZoomDist = 2; // How close it gets to the middle
         const maxZoomDist = 100; // The starting height
 
         function animate() {
