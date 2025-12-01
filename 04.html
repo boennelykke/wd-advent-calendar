@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zen Holiday Garden</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000205; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        #ui-layer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            z-index: 10;
+        }
+        #breath-instruction { font-size: 1.5rem; letter-spacing: 2px; opacity: 0.8; transition: opacity 0.5s; margin-bottom: 20px; }
+        #zen-counter {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255,255,255,0.6);
+            font-size: 2.0rem; /* Increased size */
+            font-weight: bold;
+            pointer-events: none;
+            text-shadow: 0 0 15px rgba(255,255,255,0.3);
+            transition: color 0.5s;
+        }
+        .guide-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            opacity: 0.3;
+            box-shadow: 0 0 20px rgba(255,255,255,0.2);
+            transition: border-color 0.3s;
+        }
+        #start-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+            cursor: pointer;
+            flex-direction: column;
+        }
+        h1 { margin-bottom: 10px; font-weight: 100; letter-spacing: 5px; text-align: center; }
+        p { opacity: 0.7; text-align: center; line-height: 1.6; }
+        .controls-hint { font-size: 0.8rem; opacity: 0.5; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="start-overlay">
+        <h1>ZEN HOLIDAY GARDEN</h1>
+        <p>Take a break from work.</p>
+        <p>[ Click to Enter ]<br>Hold SPACE to Inhale (Sun Rise)<br>Release to Exhale (Night Fall)</p>
+        <p class="controls-hint">W,A,S,D to Walk &bull; Mouse to Look &bull; Look at the Moon</p>
+    </div>
+
+    <div id="ui-layer">
+        <div id="breath-instruction"></div>
+        <div class="guide-ring" id="guide-ring"></div>
+    </div>
+    
+    <div id="zen-counter">Zen State: 0%</div>
+    <div id="canvas-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- RGBELoader is required for .hdr files -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
+
+    <script>
+        // --- CONFIGURATION ---
+        const config = {
+            growTime: 2.5, // Time in seconds to fully inhale/grow
+            zenRate: 2.0,  // Increased to sync 0-100% with the 2.5s grow time
+            decayRate: 1.0, // Increased decay to match responsiveness
+            maxTrees: 40,
+            birdCount: 50, // Increased birds
+            walkSpeed: 4.0,
+            grassCount: 60000 
+        };
+
+        // --- STATE ---
+        let gameState = {
+            started: false,
+            zenLevel: 0,
+            spacePressed: false,
+            time: 0,
+            breathValue: 0, 
+            lastMelodyTime: -10, // Tracks when melody last played
+            nextBirdTime: 0,
+            isFocused: false
+        };
+
+        // --- INPUT STATE ---
+        const keys = { w: false, a: false, s: false, d: false };
+        const player = {
+            height: 1.8,
+            velocity: new THREE.Vector3(),
+            direction: new THREE.Vector3()
+        };
+
+        // --- AUDIO ENGINE ---
+        const audio = {
+            ctx: null,
+            masterGain: null,
+            reverbNode: null,
+            padNodes: [],
+            nextNoteTime: 0,
+            scale: [220.00, 246.94, 277.18, 329.63, 369.99, 440.00, 493.88, 554.37, 659.25, 739.99],
+
+            init: function() {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                this.masterGain = this.ctx.createGain();
+                this.masterGain.gain.value = 0.5;
+                this.masterGain.connect(this.ctx.destination);
+                this.setupReverb();
+                this.startPad();
+                this.nextNoteTime = this.ctx.currentTime + 1;
+            },
+
+            setupReverb: function() {
+                const duration = 3; 
+                const decay = 2;
+                const sampleRate = this.ctx.sampleRate;
+                const length = sampleRate * duration;
+                const impulse = this.ctx.createBuffer(2, length, sampleRate);
+                const left = impulse.getChannelData(0);
+                const right = impulse.getChannelData(1);
+                for (let i = 0; i < length; i++) {
+                    const n = i / length;
+                    left[i] = (Math.random() * 2 - 1) * Math.pow(1 - n, decay);
+                    right[i] = (Math.random() * 2 - 1) * Math.pow(1 - n, decay);
+                }
+                this.reverbNode = this.ctx.createConvolver();
+                this.reverbNode.buffer = impulse;
+                this.reverbNode.connect(this.masterGain);
+            },
+
+            startPad: function() {
+                const freqs = [110, 164.81]; 
+                freqs.forEach(f => {
+                    const osc = this.ctx.createOscillator();
+                    osc.type = 'sine';
+                    osc.frequency.value = f;
+                    const gain = this.ctx.createGain();
+                    gain.gain.value = 0.05;
+                    osc.connect(gain);
+                    gain.connect(this.reverbNode);
+                    osc.start();
+                    this.padNodes.push(gain);
+                });
+            },
+
+            triggerBell: function() {
+                const freq = this.scale[Math.floor(Math.random() * this.scale.length)];
+                const time = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, time);
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(0.15, time + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, time + 4.0);
+                osc.connect(gain);
+                gain.connect(this.reverbNode);
+                osc.start(time);
+                osc.stop(time + 4.5);
+            },
+
+            // Procedural Bird Chirp
+            triggerBird: function() {
+                const time = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                osc.type = 'sine';
+                
+                // Bird-like frequency sweep
+                const startFreq = 2000 + Math.random() * 2000;
+                osc.frequency.setValueAtTime(startFreq, time);
+                osc.frequency.exponentialRampToValueAtTime(startFreq * 0.5, time + 0.1);
+                
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(0.1, time + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+                
+                // Pan random left/right
+                const panner = this.ctx.createStereoPanner();
+                panner.pan.value = (Math.random() * 2) - 1;
+
+                osc.connect(gain);
+                gain.connect(panner);
+                panner.connect(this.masterGain); // Direct, less reverb for intimacy
+                
+                osc.start(time);
+                osc.stop(time + 0.2);
+            },
+
+            update: function(breathValue, isInhale) {
+                if(!this.ctx) return;
+                const targetPadVol = 0.05 + (breathValue * 0.05);
+                this.padNodes.forEach(g => {
+                    g.gain.setTargetAtTime(targetPadVol, this.ctx.currentTime, 0.2);
+                });
+                if (this.ctx.currentTime >= this.nextNoteTime) {
+                    this.triggerBell();
+                    const zenFactor = gameState.zenLevel / 200;
+                    const delay = 2 + (Math.random() * (4 - (zenFactor * 2))); 
+                    this.nextNoteTime = this.ctx.currentTime + delay;
+                }
+            },
+
+            // New Moon Melody
+            playMoonMelody: function() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Ethereal Pentatonic Melody (High pitch, slow)
+                const melody = [
+                    { f: 659.25, t: 0 },   // E5
+                    { f: 783.99, t: 0.5 }, // G5
+                    { f: 587.33, t: 1.2 }, // D5
+                    { f: 880.00, t: 2.0 }, // A5
+                    { f: 659.25, t: 3.5 }  // E5
+                ];
+
+                melody.forEach(note => {
+                    const osc = this.ctx.createOscillator();
+                    osc.type = 'sine';
+                    osc.frequency.value = note.f;
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(0, now + note.t);
+                    gain.gain.linearRampToValueAtTime(0.1, now + note.t + 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + note.t + 2.5);
+
+                    osc.connect(gain);
+                    gain.connect(this.reverbNode);
+                    
+                    osc.start(now + note.t);
+                    osc.stop(now + note.t + 3.0);
+                });
+            }
+        };
+
+        // --- THREE.JS SCENE ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000205, 0.02); 
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // Initial position will be set after temple location is defined
+        camera.rotation.order = 'YXZ'; 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // --- COLORS & LIGHTS ---
+        const nightColor = new THREE.Color(0x000208); 
+        const sunColor = new THREE.Color(0xffaa33);   
+        const dayFogColor = new THREE.Color(0xffddaa); 
+        const nightFogColor = new THREE.Color(0x020215); 
+        const grassNightColor = new THREE.Color(0x051005); 
+        const grassDayColor = new THREE.Color(0x66cc44);   
+
+        // HDRI
+        let skyTexture = null;
+        const loader = new THREE.RGBELoader();
+        const hdriUrl = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/qwantani_night_puresky_1k.hdr';
+        
+        loader.load(hdriUrl, function(texture) {
+            skyTexture = texture;
+            skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+            const pmremGenerator = new THREE.PMREMGenerator(renderer);
+            pmremGenerator.compileEquirectangularShader();
+            const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+            scene.background = skyTexture;
+            scene.environment = envMap;
+            pmremGenerator.dispose();
+        }, undefined, function(err) {
+            console.error('Failed to load HDRI:', err);
+            scene.background = new THREE.Color(0x000205);
+        });
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffaa88, 0.1); 
+        scene.add(ambientLight);
+
+        const celestialLight = new THREE.DirectionalLight(0xaaccff, 1.2);
+        celestialLight.position.set(-10, 20, -10);
+        celestialLight.castShadow = true;
+        celestialLight.shadow.mapSize.width = 2048;
+        celestialLight.shadow.mapSize.height = 2048;
+        celestialLight.shadow.bias = -0.0001;
+        scene.add(celestialLight);
+
+        const rimLight = new THREE.DirectionalLight(0x5555ff, 0.8);
+        rimLight.position.set(10, 5, 10);
+        scene.add(rimLight);
+
+        // --- MOON ---
+        const moonGeo = new THREE.SphereGeometry(2, 32, 32);
+        const moonMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
+        const moon = new THREE.Mesh(moonGeo, moonMat);
+        moon.position.set(20, 30, 40); 
+        scene.add(moon);
+        
+        const moonGlowGeo = new THREE.SphereGeometry(2.5, 32, 32);
+        const moonGlowMat = new THREE.MeshBasicMaterial({ 
+            color: 0xffffdd, 
+            transparent: true, 
+            opacity: 0.3,
+            side: THREE.BackSide 
+        });
+        const moonGlow = new THREE.Mesh(moonGlowGeo, moonGlowMat);
+        moon.add(moonGlow);
+
+        // --- INTERACTION RAYCASTER ---
+        const raycaster = new THREE.Raycaster();
+        const center = new THREE.Vector2(0, 0);
+
+        // --- GROUND & GEOMETRY ---
+        function getTerrainHeight(x, z) {
+            return Math.sin(x * 0.15) * Math.cos(z * 0.15) * 1.5;
+        }
+
+        function createNoiseTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const context = canvas.getContext('2d');
+            const imageData = context.createImageData(512, 512);
+            for (let i = 0; i < imageData.data.length; i += 4) {
+                const val = Math.floor(Math.random() * 255);
+                imageData.data[i] = val;
+                imageData.data[i+1] = val;
+                imageData.data[i+2] = val;
+                imageData.data[i+3] = 255;
+            }
+            context.putImageData(imageData, 0, 0);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const groundBump = createNoiseTexture();
+        groundBump.wrapS = THREE.RepeatWrapping;
+        groundBump.wrapT = THREE.RepeatWrapping;
+        groundBump.repeat.set(20, 20);
+
+        const groundGeo = new THREE.PlaneGeometry(200, 200, 150, 150);
+        const posAttribute = groundGeo.attributes.position;
+        for (let i = 0; i < posAttribute.count; i++) {
+            const x = posAttribute.getX(i);
+            const y = posAttribute.getY(i);
+            posAttribute.setZ(i, getTerrainHeight(x, y));
+        }
+        groundGeo.computeVertexNormals();
+        const groundMat = new THREE.MeshStandardMaterial({ 
+            color: 0x15201a, 
+            roughness: 0.8,
+            metalness: 0.1,
+            bumpMap: groundBump,
+            bumpScale: 0.05
+        });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // --- MATERIALS (SHARED) ---
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 1.0 });
+        const deadLeafMat = new THREE.MeshStandardMaterial({ color: 0x554433, roughness: 0.8 });
+        const greenLeafMat = new THREE.MeshStandardMaterial({ color: 0x55bb55, roughness: 0.6 });
+        const zenLeafMat = new THREE.MeshStandardMaterial({ color: 0xffaadd, emissive: 0x440022, roughness: 0.5 });
+
+        // --- TEMPLE CONSTANTS ---
+        const templeZ = -50;
+        const templeFloorY = getTerrainHeight(0, templeZ) + 1.5; // Slight elevation
+        const templeBounds = {
+            minX: -10, maxX: 10,
+            minZ: templeZ - 10, maxZ: templeZ + 10,
+            floorY: templeFloorY
+        };
+
+        // Initialize Camera Position (Inside Temple)
+        const startEyeY = templeFloorY + 1.8; // Floor + Player Height
+        camera.position.set(0, startEyeY, templeZ + 5); // Inside, slightly forward from center
+        camera.rotation.y = Math.PI; // Face the garden (+Z)
+
+        // --- TEMPLE ---
+        const templeGroup = new THREE.Group();
+        templeGroup.position.set(0, 0, templeZ);
+        // Adjust Y to match terrain roughly, but platform is distinct
+        templeGroup.position.y = getTerrainHeight(0, templeZ); 
+        scene.add(templeGroup);
+
+        // 1. Stone Base
+        const baseGeo = new THREE.BoxGeometry(20, 2, 24);
+        const baseMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9, map: groundBump }); // Reuse noise bump
+        const base = new THREE.Mesh(baseGeo, baseMat);
+        base.position.y = 0.5; // Half height relative to group origin
+        base.receiveShadow = true;
+        base.castShadow = true;
+        templeGroup.add(base);
+
+        // 2. Wooden Floor/Deck
+        const deckGeo = new THREE.BoxGeometry(19, 0.2, 23);
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.6 });
+        const deck = new THREE.Mesh(deckGeo, woodMat);
+        deck.position.y = 1.6;
+        deck.receiveShadow = true;
+        templeGroup.add(deck);
+
+        // 3. Pillars (Red Lacquer)
+        const pillarGeo = new THREE.CylinderGeometry(0.3, 0.3, 5, 8);
+        const pillarMat = new THREE.MeshStandardMaterial({ color: 0x880000, roughness: 0.3 });
+        const positions = [
+            {x: -8, z: -10}, {x: 8, z: -10},
+            {x: -8, z: 10}, {x: 8, z: 10},
+            {x: -8, z: 0}, {x: 8, z: 0},
+            {x: -4, z: -10}, {x: 4, z: -10}, // Front entrance pillars
+            {x: -4, z: 10}, {x: 4, z: 10}
+        ];
+        positions.forEach(pos => {
+            const p = new THREE.Mesh(pillarGeo, pillarMat);
+            p.position.set(pos.x, 1.6 + 2.5, pos.z);
+            p.castShadow = true;
+            templeGroup.add(p);
+        });
+
+        // 4. Roof (Complex Tiered)
+        const roofMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+        
+        // Lower Roof
+        const lowRoofGeo = new THREE.ConeGeometry(16, 3, 4);
+        const lowRoof = new THREE.Mesh(lowRoofGeo, roofMat);
+        lowRoof.position.y = 1.6 + 5;
+        lowRoof.rotation.y = Math.PI / 4; // Align square
+        lowRoof.scale.set(1, 0.6, 1); // Flatten
+        templeGroup.add(lowRoof);
+
+        // Upper Roof
+        const highRoofGeo = new THREE.ConeGeometry(12, 4, 4);
+        const highRoof = new THREE.Mesh(highRoofGeo, roofMat);
+        highRoof.position.y = 1.6 + 6.5;
+        highRoof.rotation.y = Math.PI / 4;
+        highRoof.scale.set(1, 0.7, 1);
+        templeGroup.add(highRoof);
+
+        // 5. Stairs (Front)
+        const stairGeo = new THREE.BoxGeometry(6, 0.5, 4);
+        const stair = new THREE.Mesh(stairGeo, baseMat);
+        stair.position.set(0, 0, 13); // Extend out front
+        stair.rotation.x = 0.2; // Sloped ramp style
+        templeGroup.add(stair);
+
+        // 6. Interior Light (Lantern)
+        const lanternLight = new THREE.PointLight(0xffaa55, 1, 20);
+        lanternLight.position.set(0, 4, 0);
+        lanternLight.castShadow = true;
+        templeGroup.add(lanternLight);
+
+        // Add a visible lantern object
+        const lanternGeo = new THREE.DodecahedronGeometry(0.5);
+        const lanternMat = new THREE.MeshStandardMaterial({ color: 0xffaa55, emissive: 0xffaa55, emissiveIntensity: 2 });
+        const lanternMesh = new THREE.Mesh(lanternGeo, lanternMat);
+        lanternMesh.position.set(0, 4, 0);
+        templeGroup.add(lanternMesh);
+
+
+        // --- GRASS SYSTEM ---
+        let grassMaterial;
+        function createGrass() {
+            const bladeGeo = new THREE.PlaneGeometry(0.1, 0.8, 1, 4);
+            bladeGeo.translate(0, 0.4, 0); 
+
+            grassMaterial = new THREE.MeshStandardMaterial({
+                color: grassNightColor,
+                side: THREE.DoubleSide,
+                roughness: 0.6
+            });
+
+            grassMaterial.onBeforeCompile = (shader) => {
+                shader.uniforms.uTime = { value: 0 };
+                // FIX: Added newline \n to prevent syntax error on shader concatenation
+                shader.vertexShader = `uniform float uTime;\n` + shader.vertexShader;
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `
+                    #include <begin_vertex>
+                    float sway = sin(uTime + transformed.x * 0.5 + transformed.z * 0.3) * 0.3; 
+                    float noise = sin(uTime * 2.0 + transformed.x * 2.0) * 0.1; 
+                    float strength = pow(uv.y, 2.0); 
+                    transformed.x += (sway + noise) * strength;
+                    `
+                );
+                grassMaterial.userData.shader = shader;
+            };
+
+            const mesh = new THREE.InstancedMesh(bladeGeo, grassMaterial, config.grassCount);
+            
+            const dummy = new THREE.Object3D();
+            let i = 0;
+            while (i < config.grassCount) {
+                const x = (Math.random() - 0.5) * 100;
+                const z = (Math.random() - 0.5) * 100;
+                
+                // Don't place grass inside the temple base area
+                const inTempleX = x > -12 && x < 12;
+                const inTempleZ = z > (templeZ - 14) && z < (templeZ + 14);
+                if (inTempleX && inTempleZ) continue;
+
+                const y = getTerrainHeight(x, z);
+
+                dummy.position.set(x, y, z);
+                const s = (0.5 + Math.random() * 0.8) * 0.6; 
+                dummy.scale.set(s, s, s);
+                dummy.rotation.y = Math.random() * Math.PI * 2;
+                dummy.rotation.x = (Math.random() - 0.5) * 0.2;
+                dummy.rotation.z = (Math.random() - 0.5) * 0.2;
+
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+                i++;
+            }
+            
+            mesh.instanceMatrix.needsUpdate = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+        }
+        createGrass();
+
+        // Fireflies
+        const particlesGeo = new THREE.BufferGeometry();
+        const particleCount = 200;
+        const posArray = new Float32Array(particleCount * 3);
+        const phaseArray = new Float32Array(particleCount);
+        for(let i=0; i < particleCount * 3; i+=3) {
+            posArray[i] = (Math.random() - 0.5) * 60;
+            posArray[i+1] = Math.random() * 4;
+            posArray[i+2] = (Math.random() - 0.5) * 60;
+            phaseArray[i/3] = Math.random() * Math.PI * 2;
+        }
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        particlesGeo.setAttribute('phase', new THREE.BufferAttribute(phaseArray, 1));
+        const particleMat = new THREE.PointsMaterial({
+            size: 0.08,
+            color: 0xffffaa,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+        const fireflies = new THREE.Points(particlesGeo, particleMat);
+        scene.add(fireflies);
+
+        // Birds
+        const birds = [];
+        const birdGroup = new THREE.Group();
+        scene.add(birdGroup);
+        const birdGeo = new THREE.ConeGeometry(0.05, 0.2, 4);
+        birdGeo.rotateX(Math.PI / 2);
+        const birdMat = new THREE.MeshStandardMaterial({color: 0xddddff, roughness: 0.4});
+        for(let i=0; i<config.birdCount; i++) {
+            const bird = new THREE.Mesh(birdGeo, birdMat);
+            bird.userData = {
+                angle: Math.random() * Math.PI * 2,
+                radius: 5 + Math.random() * 10,
+                speed: 0.3 + Math.random() * 0.3,
+                height: 3 + Math.random() * 4,
+                yOffset: Math.random() * Math.PI
+            };
+            birds.push(bird);
+            birdGroup.add(bird);
+        }
+
+        // Trees
+        const treeGroup = new THREE.Group();
+        scene.add(treeGroup);
+        // Materials defined above now
+
+        function createFoliageCloud() {
+            const cloud = new THREE.Group();
+            const positions = [
+                {x: 0, y: 0, z: 0, s: 1.2},
+                {x: 0.4, y: 0.3, z: 0, s: 0.9},
+                {x: -0.4, y: 0.4, z: 0.2, s: 0.9},
+                {x: 0, y: 0.6, z: -0.4, s: 0.8},
+                {x: 0, y: -0.2, z: 0.4, s: 0.8},
+                {x: 0.5, y: -0.1, z: -0.2, s: 0.7},
+                {x: -0.3, y: 0.5, z: -0.3, s: 0.7},
+                {x: 0.2, y: 0.7, z: 0.3, s: 0.6},
+                {x: -0.2, y: 0.2, z: 0.5, s: 0.6}
+            ];
+            const geo = new THREE.DodecahedronGeometry(0.5);
+            const mat = deadLeafMat.clone();
+            positions.forEach(pos => {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(pos.x, pos.y, pos.z);
+                mesh.scale.set(pos.s, pos.s, pos.s);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+                cloud.add(mesh);
+            });
+            cloud.userData = { material: mat, baseScale: 1.0 };
+            return cloud;
+        }
+
+        for(let i=0; i<config.maxTrees; i++) {
+            const tree = new THREE.Group();
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.15, 2.5, 7), trunkMat);
+            trunk.position.y = 1.25;
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            tree.add(trunk);
+
+            const foliage = createFoliageCloud();
+            foliage.position.y = 2.5;
+            foliage.scale.set(0.8, 0.8, 0.8); 
+            foliage.userData.maxScale = 1 + Math.random() * 0.8;
+            foliage.userData.swayOffset = Math.random() * 100;
+            foliage.userData.swaySpeed = 0.5 + Math.random() * 0.5;
+            tree.add(foliage);
+
+            const angle = Math.random() * Math.PI * 2;
+            const r = 10 + Math.random() * 30; // Push trees further out to clear temple path
+            const tx = Math.cos(angle)*r;
+            const tz = Math.sin(angle)*r;
+            tree.position.set(tx, getTerrainHeight(tx, tz) - 0.2, tz);
+            
+            // Randomize Tree Size (Variation)
+            const randomScale = 0.6 + Math.random() * 0.9; // Scale between 0.6x and 1.5x
+            tree.scale.set(randomScale, randomScale, randomScale);
+
+            tree.rotation.y = Math.random() * Math.PI * 2;
+            tree.userData.initialRotX = tree.rotation.x;
+            tree.userData.initialRotZ = tree.rotation.z;
+            treeGroup.add(tree);
+        }
+
+        // --- CONTROLS & EVENTS ---
+        function startGame() {
+            if(gameState.started) return;
+            gameState.started = true;
+            document.getElementById('start-overlay').style.display = 'none';
+            audio.init();
+            document.body.requestPointerLock();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                gameState.spacePressed = true;
+            }
+            if(e.code === 'KeyW' || e.code === 'ArrowUp') keys.w = true;
+            if(e.code === 'KeyS' || e.code === 'ArrowDown') keys.s = true;
+            if(e.code === 'KeyA' || e.code === 'ArrowLeft') keys.a = true;
+            if(e.code === 'KeyD' || e.code === 'ArrowRight') keys.d = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') gameState.spacePressed = false;
+            if(e.code === 'KeyW' || e.code === 'ArrowUp') keys.w = false;
+            if(e.code === 'KeyS' || e.code === 'ArrowDown') keys.s = false;
+            if(e.code === 'KeyA' || e.code === 'ArrowLeft') keys.a = false;
+            if(e.code === 'KeyD' || e.code === 'ArrowRight') keys.d = false;
+        });
+
+        document.addEventListener('mousedown', () => {
+            if(!gameState.started) startGame();
+            else document.body.requestPointerLock();
+        });
+
+        document.addEventListener('touchstart', () => {
+            if(!gameState.started) startGame();
+            gameState.spacePressed = true;
+        });
+        document.addEventListener('touchend', () => gameState.spacePressed = false);
+
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.body) {
+                camera.rotation.y -= e.movementX * 0.002;
+                camera.rotation.x -= e.movementY * 0.002;
+                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+            }
+        });
+
+        // --- LOOP ---
+        const clock = new THREE.Clock();
+        const guideRing = document.getElementById('guide-ring');
+        const instruction = document.getElementById('breath-instruction');
+        const zenCounter = document.getElementById('zen-counter');
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            
+            if (gameState.started) {
+                gameState.time += delta;
+                
+                // Breath Logic
+                const targetBreath = gameState.spacePressed ? 1.0 : 0.0;
+                
+                // Linear transition over 'config.growTime' (2.5 seconds)
+                const step = delta / config.growTime;
+                
+                if (gameState.breathValue < targetBreath) {
+                    gameState.breathValue = Math.min(targetBreath, gameState.breathValue + step);
+                } else if (gameState.breathValue > targetBreath) {
+                    gameState.breathValue = Math.max(targetBreath, gameState.breathValue - step);
+                }
+                
+                const breathValue = gameState.breathValue;
+                const isInhale = gameState.spacePressed;
+
+                // Cycle Colors
+                scene.fog.color.lerpColors(nightFogColor, dayFogColor, breathValue);
+                scene.fog.density = THREE.MathUtils.lerp(0.005, 0.03, breathValue); 
+                renderer.setClearColor(scene.fog.color);
+
+                celestialLight.color.lerpColors(nightColor, sunColor, breathValue);
+                celestialLight.intensity = THREE.MathUtils.lerp(0.05, 6.0, breathValue);
+                ambientLight.color.lerpColors(nightColor, new THREE.Color(0xffffee), breathValue);
+                ambientLight.intensity = THREE.MathUtils.lerp(0.05, 0.8, breathValue);
+                rimLight.color.lerpColors(new THREE.Color(0x000520), new THREE.Color(0xffaa00), breathValue);
+                renderer.toneMappingExposure = THREE.MathUtils.lerp(0.5, 1.2, breathValue);
+
+                if (grassMaterial && grassMaterial.userData.shader) {
+                    grassMaterial.userData.shader.uniforms.uTime.value = gameState.time;
+                    grassMaterial.color.lerpColors(grassNightColor, grassDayColor, breathValue);
+                }
+
+                // Lantern Flicker
+                lanternLight.intensity = 1.0 + Math.sin(gameState.time * 10) * 0.1;
+
+                // Moon Growth
+                const moonScale = 1.0 + (breathValue * 4.0); // Grow from 1x to 5x
+                moon.scale.setScalar(moonScale);
+
+                // Focus Camera
+                const targetFOV = (gameState.zenLevel >= 99.9) ? 50 : 75;
+                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, delta * 2.0);
+                camera.updateProjectionMatrix();
+
+                // Clear Fog at 100% Zen
+                if (gameState.zenLevel >= 99.9) {
+                    scene.fog.density = THREE.MathUtils.lerp(scene.fog.density, 0.0, delta * 2.0);
+                    zenCounter.style.color = "#aaffaa"; 
+                    
+                    if (gameState.time > gameState.nextBirdTime) {
+                        audio.triggerBird();
+                        gameState.nextBirdTime = gameState.time + 1 + Math.random() * 3; 
+                    }
+                } else {
+                    zenCounter.style.color = "rgba(255,255,255,0.6)";
+                }
+
+                // Movement
+                if (document.pointerLockElement === document.body) {
+                    player.velocity.set(0, 0, 0);
+                    if (keys.w) player.velocity.z -= config.walkSpeed * delta;
+                    if (keys.s) player.velocity.z += config.walkSpeed * delta;
+                    if (keys.a) player.velocity.x -= config.walkSpeed * delta;
+                    if (keys.d) player.velocity.x += config.walkSpeed * delta;
+                    player.velocity.applyEuler(new THREE.Euler(0, camera.rotation.y, 0));
+                    camera.position.add(player.velocity);
+                }
+
+                // Terrain & Temple Collision
+                let groundY = getTerrainHeight(camera.position.x, camera.position.z);
+                
+                // Check if inside temple bounds (XZ)
+                if (camera.position.x > templeBounds.minX && camera.position.x < templeBounds.maxX &&
+                    camera.position.z > templeBounds.minZ && camera.position.z < templeBounds.maxZ) {
+                    groundY = Math.max(groundY, templeBounds.floorY);
+                }
+
+                const breathOffset = breathValue * 0.2; 
+                const targetY = groundY + player.height + breathOffset;
+                camera.position.y += (targetY - camera.position.y) * 0.1;
+
+                // Interaction
+                raycaster.setFromCamera(center, camera);
+                const moonIntersects = raycaster.intersectObject(moon, true);
+                if (moonIntersects.length > 0) {
+                    if (gameState.time - gameState.lastMelodyTime > 5.0) {
+                        audio.playMoonMelody(); 
+                        gameState.lastMelodyTime = gameState.time;
+                    }
+                }
+
+                // UI
+                const size = 50 + (breathValue * 100);
+                guideRing.style.width = `${size}px`;
+                guideRing.style.height = `${size}px`;
+                audio.update(breathValue, isInhale);
+
+                if (isInhale) {
+                    instruction.innerText = "Inhale (Sun Rise)";
+                    guideRing.style.borderColor = "#ffaa33"; 
+                    gameState.zenLevel = Math.min(100, gameState.zenLevel + config.zenRate * delta * 20); 
+                } else {
+                    instruction.innerText = "Exhale (Night Fall)";
+                    guideRing.style.borderColor = "#88ccff"; 
+                    gameState.zenLevel = Math.max(0, gameState.zenLevel - config.decayRate * delta * 10);
+                }
+                zenCounter.innerText = `Zen: ${Math.floor(gameState.zenLevel)}%`;
+
+                // Animation
+                if (skyTexture) skyTexture.offset.x += delta * 0.005;
+
+                treeGroup.children.forEach(tree => {
+                    const foliageGroup = tree.children[1];
+                    const lifeCycle = breathValue; 
+                    const targetScale = THREE.MathUtils.lerp(0.8 * tree.scale.x, foliageGroup.userData.maxScale * 2.5, lifeCycle);
+                    foliageGroup.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.05);
+
+                    const mat = foliageGroup.userData.material;
+                    if (lifeCycle < 0.3) {
+                        mat.color.copy(deadLeafMat.color);
+                        mat.emissive.setHex(0x000000);
+                    } else if (lifeCycle < 0.7) {
+                        const t = (lifeCycle - 0.3) / 0.4;
+                        mat.color.lerpColors(deadLeafMat.color, greenLeafMat.color, t);
+                        mat.emissive.setHex(0x000000);
+                    } else {
+                        const t = (lifeCycle - 0.7) / 0.3;
+                        mat.color.lerpColors(greenLeafMat.color, zenLeafMat.color, t);
+                        mat.emissive.lerp(zenLeafMat.emissive, t);
+                        mat.emissiveIntensity = t * 1.5;
+                    }
+
+                    const windTime = gameState.time * 0.8;
+                    const sway = Math.sin(windTime + tree.position.x * 0.5) * 0.02; 
+                    tree.rotation.z = tree.userData.initialRotZ + sway;
+                    tree.rotation.x = tree.userData.initialRotX + (Math.cos(windTime * 0.7 + tree.position.z) * 0.02);
+                });
+
+                birds.forEach(bird => {
+                    bird.userData.angle += bird.userData.speed * delta;
+                    const r = bird.userData.radius;
+                    const a = bird.userData.angle;
+                    bird.position.x = Math.cos(a) * r;
+                    bird.position.z = Math.sin(a) * r;
+                    bird.position.y = bird.userData.height + Math.sin(a * 2 + bird.userData.yOffset) * 1.0;
+                    const lookTarget = new THREE.Vector3(
+                        Math.cos(a + 0.1) * r,
+                        bird.userData.height + Math.sin((a + 0.1) * 2 + bird.userData.yOffset),
+                        Math.sin(a + 0.1) * r
+                    );
+                    bird.lookAt(lookTarget);
+                });
+
+                const positions = fireflies.geometry.attributes.position.array;
+                const phases = fireflies.geometry.attributes.phase.array;
+                for(let i=0; i<particleCount; i++) {
+                    const yIdx = i*3 + 1;
+                    positions[yIdx] += delta * 0.2; 
+                    if(positions[yIdx] > 4) positions[yIdx] = 0;
+                    positions[i*3] += Math.sin(gameState.time + phases[i]) * 0.01;
+                }
+                fireflies.geometry.attributes.position.needsUpdate = true;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>
