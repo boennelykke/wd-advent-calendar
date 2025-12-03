@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elfday - Enterprise Workshop Planning</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Import Map for React and Lucide -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.294.0"
+        }
+    }
+    </script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        /* Custom scrollbar hiding utility */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Workday-ish font settings */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        .fade-in-down {
+            animation: fadeInDown 0.5s ease-out;
+        }
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Search, Home, Users, MonitorPlay, Store, Bell, MessageCircle, 
+            Menu, ThumbsUp, MessageSquare, Share2, MoreHorizontal, 
+            Image as ImageIcon, Smile, Video, X, Gift, Snowflake,  
+            ThermometerSnowflake, Globe, Clock, CheckCircle, Package,
+            Wifi, WifiOff, AlertTriangle, Inbox, Calendar, FileText, 
+            Briefcase, Settings, LogOut, LayoutGrid, CircleUser,
+            AlertCircle, BadgeCheck, FileQuestion, ArrowRight,
+            BarChart3, Map, Plane
+        } from 'lucide-react';
+
+        // --- Mock Data ---
+        
+        // Feed Data
+        const INITIAL_POSTS = [
+            {
+                id: 1,
+                user: "Santa Claus",
+                role: "CEO",
+                avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Santa&clothing=blazerAndShirt&hairColor=auburn&facialHair=beardMajestic&facialHairColor=platinum&top=hat",
+                time: "10m ago",
+                content: "HO HO HO! 🎅\n\nI just checked the numbers. Production in the Wooden Duck department is down 12%. I don't want to cancel the Hot Cocoa break, but if we don't pick up the pace, we might have to work through the night on the 24th.",
+                image: null,
+                likes: 1205,
+                comments: [
+                    { id: 101, user: "Bernard (Head Elf)", text: "Sir, we ran out of non-toxic yellow paint. Logistics issue." },
+                    { id: 102, user: "Mrs. Claus", text: "Nick, stop posting and come eat your soup." }
+                ],
+                shares: 45,
+                likedByMe: false
+            },
+            {
+                id: 2,
+                user: "Zippy",
+                role: "Union Rep",
+                avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Zippy&top=hat",
+                time: "45m ago",
+                content: "Is anyone else tired of the 'Jingle Bells' playlist on loop? It's been playing since OCTOBER. 🎵🚫 \n\n#ElfRights #SilentNightPlease",
+                image: null,
+                likes: 856,
+                comments: [
+                    { id: 201, user: "Sparky", text: "I tried to change it to Jazz but the system is locked by management." }
+                ],
+                shares: 12,
+                likedByMe: true
+            }
+        ];
+
+        const LIVE_POSTS_POOL = [
+            {
+                user: "Alabaster Snowball",
+                role: "SysAdmin",
+                avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alabaster&top=hat",
+                content: "⚠️ ALERT: The ribbons in Sector 4 are tangling! We need maintenance immediately. Production is halting!",
+                image: null
+            },
+            {
+                user: "Vixen",
+                role: "Flight Logistics",
+                avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Vixen&top=winterHat03",
+                content: "Just did a lap around the aurora borealis. The sleigh is handling beautifully this year. 🌌✨",
+                image: "https://images.unsplash.com/photo-1531366936337-7c912a4589a7?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
+            },
+            {
+                user: "Sugarplum Mary",
+                role: "Kitchen Lead",
+                avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Mary&top=hat",
+                content: "To whoever took the last tray of snickerdoodles from the kitchen: You are now on the Naughty List. Automatically. 🍪⛔",
+                image: null
+            }
+        ];
+
+        const LIVE_COMMENTS_POOL = [
+            { user: "Pepper Minstix", text: "I saw that too! It's a disaster." },
+            { user: "Elf #884", text: "Can we please focus? Christmas is in 3 weeks." },
+            { user: "Mrs. Claus", text: "Bring me some cookies when you're done." },
+            { user: "Prancer", text: "Agreed. 100%." },
+            { user: "Grumpy Elf", text: "This meeting could have been an email." }
+        ];
+
+        // Inbox Data
+        const INITIAL_INBOX = [
+            {
+                id: 1,
+                priority: "High",
+                title: "Production Quota Alert: Wooden Ducks",
+                sender: "System Alert",
+                time: "10m ago",
+                type: "Alert"
+            },
+            {
+                id: 2,
+                priority: "Normal",
+                title: "Time Off Request: Zippy",
+                sender: "HR System",
+                time: "45m ago",
+                type: "Approval"
+            }
+        ];
+
+        const LIVE_INBOX_POOL = [
+            { priority: "Low", title: "Cookie Inventory Low", sender: "Kitchen Ops", type: "Restock" },
+            { priority: "High", title: "Sleigh Safety Check Failed", sender: "Hangar 1", type: "Alert" },
+            { priority: "Normal", title: "New Reindeer Dental Plan", sender: "Benefits", type: "Review" },
+            { priority: "Normal", title: "Toy Painting Compliance", sender: "Quality Assurance", type: "Task" },
+            { priority: "Low", title: "Lost Hat Found: Sector 7", sender: "Lost & Found", type: "Notice" },
+            { priority: "High", title: "Snow Storm Warning", sender: "Weather Ops", type: "Alert" }
+        ];
+
+        const GIFT_REQUESTS = [
+            { id: 1, child: "Timmy", location: "London, UK", item: "Lego Star Wars", status: "production" },
+            { id: 2, child: "Sarah", location: "Tokyo, JP", item: "Drawing Tablet", status: "wrapped" },
+            { id: 3, child: "Mateo", location: "Buenos Aires, AR", item: "Football", status: "pending" },
+            { id: 4, child: "Aisha", location: "Cairo, EG", item: "Telescope", status: "production" },
+        ];
+
+        const LIVE_WISHLIST_POOL = [
+            { child: "Sven", location: "Berlin, DE", item: "Wooden Train Set" },
+            { child: "Yuki", location: "Osaka, JP", item: "Plush Reindeer" },
+            { child: "Elena", location: "Madrid, ES", item: "Science Kit" },
+            { child: "Kofi", location: "Accra, GH", item: "Drum Set" },
+            { child: "Zara", location: "Toronto, CA", item: "Ice Skates" },
+            { child: "Liam", location: "Sydney, AU", item: "Surfboard" },
+            { child: "Priya", location: "Mumbai, IN", item: "Paint Set" },
+            { child: "Noah", location: "Oslo, NO", item: "Ski Goggles" }
+        ];
+
+        const CURRENT_USER = {
+            name: "Buddy",
+            role: "Senior QC Specialist",
+            avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Buddy&clothing=collarAndSweater&top=hat"
+        };
+
+        // --- Components ---
+
+        const WelcomeOverlay = ({ onDismiss }) => (
+            <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-500">
+                <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full text-center space-y-6 transform transition-all scale-100">
+                    <div className="flex justify-center">
+                        <div className="bg-[#005cb9] text-white p-4 rounded-2xl shadow-lg">
+                            <Gift size={48} strokeWidth={1.5} />
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <h1 className="text-3xl font-light text-gray-800">Welcome to your dashboard, <span className="font-bold text-[#005cb9]">Santa</span></h1>
+                        <p className="text-gray-500 text-sm">Your enterprise workshop planning & elf management tools are ready for the holiday season.</p>
+                    </div>
+
+                    <div className="pt-2">
+                        <button
+                            onClick={onDismiss}
+                            className="group bg-[#005cb9] hover:bg-[#004a94] text-white px-8 py-3 rounded-full font-medium transition-all w-full flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                        >
+                            Get Started <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                        </button>
+                    </div>
+                    
+                    <p className="text-xs text-gray-400">v24.12.25 • Stable Build</p>
+                </div>
+            </div>
+        );
+
+        const Modal = ({ title, children, onClose }) => (
+            <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+                <div className="bg-white rounded-lg overflow-hidden w-full max-w-2xl shadow-2xl relative max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                    <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
+                        <h3 className="font-semibold text-lg text-gray-800">{title}</h3>
+                        <button onClick={onClose} className="hover:bg-gray-200 p-1 rounded transition-colors text-gray-500">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="p-6 overflow-y-auto">
+                        {children}
+                    </div>
+                </div>
+            </div>
+        );
+
+        const SleighCamModal = ({ onClose }) => {
+            const [useBackup, setUseBackup] = useState(false);
+            const BACKUP_CAM_IMG = "https://cdn.pixabay.com/photo/2019/12/17/16/47/santa-claus-4702336_1280.jpg";
+
+            return (
+            <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="bg-white rounded-lg overflow-hidden w-full max-w-4xl shadow-2xl relative">
+                    <div className="bg-[#005cb9] text-white p-4 flex justify-between items-center">
+                        <h3 className="font-semibold text-lg flex items-center gap-2">
+                             <MonitorPlay size={20} /> Sleigh Telemetry & Vision
+                        </h3>
+                        <button onClick={onClose} className="hover:bg-blue-700 p-1 rounded transition-colors">
+                            <X size={24} />
+                        </button>
+                    </div>
+                    
+                    <div className="p-0 bg-black relative aspect-video">
+                        {useBackup ? (
+                            <div className="w-full h-full relative">
+                                <img src={BACKUP_CAM_IMG} className="w-full h-full object-cover opacity-80" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+                                    <div className="bg-black/60 p-6 rounded-lg backdrop-blur text-center border border-gray-600">
+                                        <WifiOff className="mx-auto text-gray-400 mb-2" size={32} />
+                                        <p className="text-white font-mono text-lg">SIGNAL LOST</p>
+                                        <p className="text-gray-400 text-sm">Displaying Static Archive</p>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <iframe 
+                                width="100%" 
+                                height="100%" 
+                                src="https://www.youtube-nocookie.com/embed/2pz6XfymiHk?si=D3oRedgqluYe_27D&amp;controls=0&amp;start=40&autoplay=1&mute=1" 
+                                title="YouTube video player" 
+                                frameBorder="0" 
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                                referrerPolicy="strict-origin-when-cross-origin" 
+                                allowFullScreen
+                            ></iframe>
+                        )}
+                        
+                        {/* Overlay Controls */}
+                        <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
+                            <div className="text-xs font-mono text-green-400 bg-black/50 px-2 py-1 rounded">
+                                LAT: 89.99 N | LON: 0.00 W | ALT: 12000ft
+                            </div>
+                            <button 
+                                onClick={() => setUseBackup(!useBackup)}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded shadow-lg text-xs font-bold transition-all ${
+                                useBackup 
+                                    ? 'bg-yellow-500 text-black hover:bg-yellow-400' 
+                                    : 'bg-green-600 text-white hover:bg-green-500'
+                                }`}
+                            >
+                                {useBackup ? <AlertTriangle size={12} /> : <Wifi size={12} />}
+                                {useBackup ? 'RETRY CONNECTION' : 'LIVE SIGNAL'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            );
+        };
+
+        const AppCard = ({ title, icon: Icon, color, onClick, notificationCount }) => (
+            <div 
+                onClick={onClick}
+                className="bg-white p-2 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-200 flex flex-col items-center justify-center h-20 relative group hover:-translate-y-0.5"
+            >
+                {notificationCount > 0 && (
+                    <div className="absolute top-1 right-1 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[16px] text-center shadow-sm z-10">
+                        {notificationCount}
+                    </div>
+                )}
+                <div className={`p-2 rounded-full ${color} text-white mb-1.5 group-hover:scale-105 transition-transform duration-200`}>
+                    <Icon size={20} />
+                </div>
+                <h3 className="text-gray-700 font-medium text-center text-[11px] leading-tight px-1 truncate w-full">{title}</h3>
+                <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <MoreHorizontal size={12} className="text-gray-400" />
+                </div>
+            </div>
+        );
+
+        const InboxRow = ({ item, isNew, onClick }) => (
+            <div onClick={onClick} className={`flex items-start gap-3 p-3 border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors ${isNew ? 'bg-blue-50/50 fade-in-down' : ''}`}>
+                <div className={`rounded-full p-2 mt-0.5 ${
+                    item.priority === 'High' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                }`}>
+                    {item.priority === 'High' ? <AlertCircle size={14} /> : <Inbox size={14} />}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                        <h4 className={`text-sm text-gray-800 truncate ${isNew ? 'font-bold' : 'font-semibold'}`}>
+                            {isNew && <span className="inline-block w-2 h-2 bg-blue-500 rounded-full mr-1.5 align-middle"></span>}
+                            {item.title}
+                        </h4>
+                        <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">{item.time || 'Just now'}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">{item.sender}</p>
+                </div>
+                <div className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    item.type === 'Alert' ? 'bg-red-100 text-red-600' : 
+                    item.type === 'Approval' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
+                }`}>
+                    {item.type}
+                </div>
+            </div>
+        );
+
+        const FeedPost = ({ post }) => {
+            const [liked, setLiked] = useState(post.likedByMe);
+            const [likes, setLikes] = useState(post.likes);
+            const [showComments, setShowComments] = useState(false);
+
+            const handleLike = () => {
+                if (liked) {
+                    setLikes(likes - 1);
+                } else {
+                    setLikes(likes + 1);
+                }
+                setLiked(!liked);
+            };
+
+            return (
+                <div className="bg-white rounded border border-gray-200 shadow-sm p-4 mb-4 fade-in-down">
+                    <div className="flex items-start gap-3 mb-3">
+                        <img src={post.avatar} className="w-10 h-10 rounded-full border border-gray-200" />
+                        <div className="flex-1">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h3 className="font-bold text-gray-900 text-sm">{post.user}</h3>
+                                    <p className="text-xs text-gray-500">{post.role} • {post.time}</p>
+                                </div>
+                                <button className="text-gray-400 hover:bg-gray-100 p-1 rounded-full">
+                                    <MoreHorizontal size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <p className="text-gray-800 text-sm whitespace-pre-wrap mb-3">{post.content}</p>
+                    
+                    {post.image && (
+                        <div className="mb-3 -mx-4">
+                            <img src={post.image} className="w-full h-64 object-cover" />
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-4 border-t border-gray-100 pt-3">
+                        <button 
+                            onClick={handleLike}
+                            className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded hover:bg-gray-50 transition-colors ${liked ? 'text-[#005cb9]' : 'text-gray-500'}`}
+                        >
+                            <ThumbsUp size={14} className={liked ? "fill-current" : ""} />
+                            {likes} {likes === 1 ? 'Like' : 'Likes'}
+                        </button>
+                        <button 
+                            onClick={() => setShowComments(!showComments)}
+                            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 px-2 py-1 rounded hover:bg-gray-50 transition-colors"
+                        >
+                            <MessageSquare size={14} />
+                            {post.comments.length} Comments
+                        </button>
+                    </div>
+
+                    {showComments && (
+                        <div className="mt-3 bg-gray-50 rounded p-3 space-y-3">
+                            {post.comments.map(comment => (
+                                <div key={comment.id} className="flex gap-2">
+                                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${comment.user.split(' ')[0]}`} className="w-6 h-6 rounded-full" />
+                                    <div className="flex-1">
+                                        <div className="bg-white p-2 rounded shadow-sm">
+                                            <p className="text-xs font-bold text-gray-800">{comment.user}</p>
+                                            <p className="text-xs text-gray-600">{comment.text}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- Main App ---
+
+        function App() {
+            const [showWelcome, setShowWelcome] = useState(true);
+            const [activeModal, setActiveModal] = useState(null);
+            const [currentDate, setCurrentDate] = useState(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }));
+            const [posts, setPosts] = useState(INITIAL_POSTS);
+            const [inbox, setInbox] = useState(INITIAL_INBOX);
+            const [wishlist, setWishlist] = useState(GIFT_REQUESTS);
+
+            // Live feed update effect (Posts & Comments)
+            useEffect(() => {
+                const postInterval = setInterval(() => {
+                    setPosts(currentPosts => {
+                        const availableTemplates = LIVE_POSTS_POOL.filter(
+                            template => !currentPosts.some(post => post.content === template.content)
+                        );
+                        if (availableTemplates.length === 0) return currentPosts;
+
+                        const randomTemplate = availableTemplates[Math.floor(Math.random() * availableTemplates.length)];
+                        const newPost = {
+                            id: Date.now() + Math.random(),
+                            ...randomTemplate,
+                            time: "Just now",
+                            likes: Math.floor(Math.random() * 20),
+                            comments: [],
+                            shares: 0,
+                            likedByMe: false
+                        };
+                        return [newPost, ...currentPosts];
+                    });
+                }, 12000); 
+
+                const commentInterval = setInterval(() => {
+                    setPosts(currentPosts => {
+                        if (currentPosts.length === 0) return currentPosts;
+                        const newPosts = [...currentPosts];
+                        const randomPostIndex = Math.floor(Math.random() * Math.min(newPosts.length, 3));
+                        const targetPost = newPosts[randomPostIndex];
+                        const randomComment = LIVE_COMMENTS_POOL[Math.floor(Math.random() * LIVE_COMMENTS_POOL.length)];
+                        
+                        if (targetPost.comments.some(c => c.user === randomComment.user)) return currentPosts;
+
+                        newPosts[randomPostIndex] = {
+                            ...targetPost,
+                            comments: [...targetPost.comments, {
+                                id: Date.now(),
+                                ...randomComment
+                            }]
+                        };
+                        return newPosts;
+                    });
+                }, 5000); 
+
+                return () => {
+                    clearInterval(postInterval);
+                    clearInterval(commentInterval);
+                };
+            }, []);
+
+            // Live Inbox Effect
+            useEffect(() => {
+                const inboxInterval = setInterval(() => {
+                    const randomTask = LIVE_INBOX_POOL[Math.floor(Math.random() * LIVE_INBOX_POOL.length)];
+                    const newItem = {
+                        id: Date.now(),
+                        ...randomTask,
+                        time: "Just now"
+                    };
+                    
+                    setInbox(prev => [newItem, ...prev].slice(0, 10)); 
+                }, 8000); 
+
+                return () => clearInterval(inboxInterval);
+            }, []);
+
+            // Live Wishlist Effect
+            useEffect(() => {
+                const wishlistInterval = setInterval(() => {
+                    const randomReq = LIVE_WISHLIST_POOL[Math.floor(Math.random() * LIVE_WISHLIST_POOL.length)];
+                    const statuses = ['pending', 'production', 'wrapped'];
+                    const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+                    
+                    const newItem = {
+                        id: Date.now(),
+                        ...randomReq,
+                        status: randomStatus
+                    };
+                    
+                    setWishlist(prev => [newItem, ...prev].slice(0, 8)); // Keep last 8 items
+                }, 4000); // New request every 4s
+
+                return () => clearInterval(wishlistInterval);
+            }, []);
+
+            // --- Generic Modal Content Rendering ---
+            const renderModalContent = () => {
+                switch(activeModal) {
+                    case 'toy_production':
+                        return (
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-blue-50 p-4 rounded text-center">
+                                        <h4 className="text-2xl font-bold text-blue-600">84%</h4>
+                                        <p className="text-sm text-gray-600">Overall Completion</p>
+                                    </div>
+                                    <div className="bg-red-50 p-4 rounded text-center">
+                                        <h4 className="text-2xl font-bold text-red-600">12,450</h4>
+                                        <p className="text-sm text-gray-600">Units Behind</p>
+                                    </div>
+                                </div>
+                                <h4 className="font-semibold text-gray-700 mt-4">Department Status</h4>
+                                <ul className="space-y-2 text-sm">
+                                    <li className="flex justify-between"><span>Wooden Ducks</span> <span className="text-red-500 font-bold">Delayed</span></li>
+                                    <li className="flex justify-between"><span>Lego Sets</span> <span className="text-green-500 font-bold">On Track</span></li>
+                                    <li className="flex justify-between"><span>Video Games</span> <span className="text-green-500 font-bold">Ahead</span></li>
+                                    <li className="flex justify-between"><span>Dolls</span> <span className="text-yellow-500 font-bold">At Risk</span></li>
+                                </ul>
+                            </div>
+                        );
+                    case 'time_off':
+                        return (
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center bg-gray-100 p-3 rounded">
+                                    <span>Remaining PTO</span>
+                                    <span className="font-bold text-gray-800">14 Days</span>
+                                </div>
+                                <button className="w-full bg-[#005cb9] text-white py-2 rounded">Request Absence</button>
+                                <h4 className="font-semibold text-gray-700 mt-2">Upcoming Team Absences</h4>
+                                <div className="text-sm space-y-2">
+                                    <p>• Zippy (Union Rep): Dec 26 - Jan 2</p>
+                                    <p>• Prancer (Logistics): Dec 27 - Dec 28</p>
+                                </div>
+                            </div>
+                        );
+                    case 'benefits':
+                        return (
+                            <div className="space-y-4">
+                                <h4 className="font-semibold">Your Coverage</h4>
+                                <div className="p-3 border rounded">
+                                    <p className="font-medium">North Pole Health Select</p>
+                                    <p className="text-sm text-gray-500">Active • Member ID: ELF-9982</p>
+                                </div>
+                                <div className="p-3 border rounded">
+                                    <p className="font-medium">Cookie & Milk Allowance</p>
+                                    <p className="text-sm text-gray-500">Unlimited (Subject to "Naughty List" check)</p>
+                                </div>
+                                <div className="p-3 border rounded">
+                                    <p className="font-medium">Dental</p>
+                                    <p className="text-sm text-gray-500">Includes Hermey's Special Plan</p>
+                                </div>
+                            </div>
+                        );
+                    case 'directory':
+                        return (
+                            <div>
+                                <input type="text" placeholder="Search elves..." className="w-full p-2 border rounded mb-4" />
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-3">
+                                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Santa" className="w-10 h-10 rounded-full" />
+                                        <div><p className="font-bold text-sm">Santa Claus</p><p className="text-xs text-gray-500">CEO</p></div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Bernard" className="w-10 h-10 rounded-full" />
+                                        <div><p className="font-bold text-sm">Bernard</p><p className="text-xs text-gray-500">Head Elf</p></div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Hermey" className="w-10 h-10 rounded-full" />
+                                        <div><p className="font-bold text-sm">Hermey</p><p className="text-xs text-gray-500">Dentist / Toy Maker</p></div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    case 'expenses':
+                        return (
+                            <div className="text-center py-8">
+                                <BarChart3 className="mx-auto text-gray-400 mb-2" size={48} />
+                                <h3 className="text-lg font-medium text-gray-900">Expense Reports</h3>
+                                <p className="text-gray-500 mb-4">You have no pending expense reports.</p>
+                                <button className="bg-[#005cb9] text-white px-4 py-2 rounded">Create New Report</button>
+                            </div>
+                        );
+                    case 'performance':
+                        return (
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <h4 className="font-bold">2024 Annual Review</h4>
+                                    <span className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold">Exceeds Expectations</span>
+                                </div>
+                                <p className="text-sm text-gray-600">"Buddy brings an infectious Christmas spirit to the workshop floor. His QC work on Jack-in-the-boxes has been exemplary." - Santa</p>
+                                <div className="h-px bg-gray-200"></div>
+                                <h4 className="font-bold">Goals for 2025</h4>
+                                <ul className="list-disc pl-5 text-sm text-gray-700">
+                                    <li>Increase wrapping speed by 15%</li>
+                                    <li>Mentor 3 junior elves</li>
+                                    <li>Reduce tape wastage</li>
+                                </ul>
+                            </div>
+                        );
+                    case 'global_ops':
+                        return (
+                            <div className="space-y-4">
+                                <div className="bg-black/90 p-4 rounded text-white flex justify-between items-center">
+                                    <div>
+                                        <p className="text-xs text-gray-400">CURRENT REGION</p>
+                                        <p className="font-bold text-lg">North Pole (HQ)</p>
+                                    </div>
+                                    <Globe className="text-blue-400" size={32} />
+                                </div>
+                                <h4 className="font-semibold mt-4">Regional Status</h4>
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                    <div className="p-2 bg-green-50 rounded border border-green-100">Europe: <span className="font-bold">Ready</span></div>
+                                    <div className="p-2 bg-green-50 rounded border border-green-100">Americas: <span className="font-bold">Ready</span></div>
+                                    <div className="p-2 bg-green-50 rounded border border-green-100">Asia: <span className="font-bold">Ready</span></div>
+                                    <div className="p-2 bg-yellow-50 rounded border border-yellow-100">Oceania: <span className="font-bold">Reviewing</span></div>
+                                </div>
+                            </div>
+                        );
+                    case 'inbox':
+                        return (
+                             <div className="space-y-0 divide-y divide-gray-100">
+                                {inbox.map(item => (
+                                    <div key={item.id} className="p-3 hover:bg-gray-50 flex justify-between items-center">
+                                        <div>
+                                            <p className="font-semibold text-sm">{item.title}</p>
+                                            <p className="text-xs text-gray-500">{item.sender} • {item.time}</p>
+                                        </div>
+                                        <button className="text-blue-600 text-xs font-medium border border-blue-600 px-2 py-1 rounded hover:bg-blue-50">View</button>
+                                    </div>
+                                ))}
+                                <div className="pt-4 text-center">
+                                    <button className="text-sm text-gray-500 underline">View Archived Items</button>
+                                </div>
+                             </div>
+                        );
+                    case 'menu':
+                        return (
+                            <div className="grid grid-cols-2 gap-4">
+                                <button className="p-4 border rounded hover:bg-gray-50 text-left">
+                                    <Settings className="mb-2 text-gray-500" />
+                                    <span className="font-bold block">Settings</span>
+                                    <span className="text-xs text-gray-500">Manage account</span>
+                                </button>
+                                <button className="p-4 border rounded hover:bg-gray-50 text-left">
+                                    <LogOut className="mb-2 text-gray-500" />
+                                    <span className="font-bold block">Sign Out</span>
+                                    <span className="text-xs text-gray-500">End session</span>
+                                </button>
+                            </div>
+                        );
+                     case 'search':
+                        return (
+                            <div className="text-center py-10">
+                                <Search className="mx-auto text-gray-300 mb-3" size={48} />
+                                <p className="text-gray-500">Start typing to search across all apps and data...</p>
+                            </div>
+                        );
+                    case 'notifications':
+                        return (
+                             <div className="space-y-4">
+                                <div className="flex gap-3 items-start border-b pb-3">
+                                    <div className="bg-red-100 p-2 rounded-full text-red-600"><AlertTriangle size={16} /></div>
+                                    <div>
+                                        <p className="text-sm font-bold">Production Alert</p>
+                                        <p className="text-xs text-gray-600">Wooden Ducks quota missed.</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 items-start border-b pb-3">
+                                    <div className="bg-blue-100 p-2 rounded-full text-blue-600"><MessageSquare size={16} /></div>
+                                    <div>
+                                        <p className="text-sm font-bold">New Comment</p>
+                                        <p className="text-xs text-gray-600">Santa Claus commented on your post.</p>
+                                    </div>
+                                </div>
+                             </div>
+                        );
+                    default:
+                        return null;
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col font-sans bg-gray-50">
+                    
+                    {showWelcome && <WelcomeOverlay onDismiss={() => setShowWelcome(false)} />}
+                    {activeModal === 'sleigh' ? (
+                        <SleighCamModal onClose={() => setActiveModal(null)} />
+                    ) : activeModal && (
+                        <Modal title={activeModal.replace('_', ' ').toUpperCase()} onClose={() => setActiveModal(null)}>
+                            {renderModalContent()}
+                        </Modal>
+                    )}
+
+                    {/* --- Workday Style Header --- */}
+                    <header className="bg-white shadow-sm h-16 flex items-center justify-between px-6 sticky top-0 z-50 relative">
+                        {/* Logo Area */}
+                        <div className="flex items-center gap-4 w-1/4">
+                             <button 
+                                onClick={() => setActiveModal('menu')}
+                                className="flex items-center gap-2 text-gray-700 font-bold hover:bg-gray-100 p-2 rounded transition-colors group"
+                            >
+                                <Menu size={24} className="group-hover:text-blue-600 transition-colors" />
+                                <span className="text-sm tracking-wide group-hover:text-blue-600 transition-colors">MENU</span>
+                            </button>
+                            
+                            {/* Vertical Separator */}
+                            <div className="h-6 w-px bg-gray-300 mx-1"></div>
+
+                            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveModal(null)}>
+                                <div className="bg-[#005cb9] text-white p-1.5 rounded">
+                                    <Gift size={24} />
+                                </div>
+                                <span className="text-xl font-bold text-gray-700 tracking-tight">Elf<span className="text-[#005cb9]">day</span></span>
+                            </div>
+                        </div>
+
+                        {/* Search Bar */}
+                        <div className="flex-1 max-w-2xl px-4">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                                <input 
+                                    onClick={() => setActiveModal('search')}
+                                    type="text" 
+                                    placeholder="Search for people, tasks, or toys..." 
+                                    className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Right Actions */}
+                        <div className="flex items-center justify-end gap-4 w-1/4">
+                            <button 
+                                onClick={() => setActiveModal('notifications')}
+                                className="p-2 text-gray-500 hover:bg-gray-100 rounded-full relative"
+                            >
+                                <Bell size={20} />
+                                <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+                            </button>
+                            <button 
+                                onClick={() => setActiveModal('inbox')}
+                                className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"
+                            >
+                                <Inbox size={20} />
+                            </button>
+                            <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 pr-3 rounded-full border border-transparent hover:border-gray-200 transition-all">
+                                <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200">
+                                    <img src={CURRENT_USER.avatar} alt="Profile" className="w-full h-full object-cover" />
+                                </div>
+                                <span className="text-sm font-medium text-gray-700 hidden lg:block">{CURRENT_USER.name}</span>
+                            </div>
+                        </div>
+                    </header>
+                    
+                    {/* Gradient Line below Header */}
+                    <div className="h-[15px] w-full bg-gradient-to-r from-red-600 via-green-500 to-red-600"></div>
+
+                    {/* --- Main Content --- */}
+                    <main className="flex-1 max-w-7xl w-full mx-auto p-6">
+                        
+                        {/* Welcome Banner */}
+                        <div className="mb-6 flex justify-between items-end">
+                            <div>
+                                <h1 className="text-3xl font-light text-gray-800 mb-1">Good Morning, {CURRENT_USER.name}</h1>
+                                <p className="text-gray-500 text-sm">It is {currentDate}. Production is at 94% capacity.</p>
+                            </div>
+                            <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded shadow-sm text-sm font-medium hover:bg-gray-50">
+                                Configure Dashboard
+                            </button>
+                        </div>
+
+                        {/* Layout Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            
+                            {/* Left Col: Apps Grid & Feed */}
+                            <div className="lg:col-span-2 space-y-8">
+                                
+                                {/* Apps Section */}
+                                <section>
+                                    <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Your Apps</h2>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-3">
+                                        <AppCard title="Toy Production" icon={Package} color="bg-blue-600" onClick={() => setActiveModal('toy_production')} />
+                                        <AppCard title="Time Off" icon={Calendar} color="bg-orange-500" onClick={() => setActiveModal('time_off')} />
+                                        <AppCard title="Benefits" icon={Gift} color="bg-green-600" onClick={() => setActiveModal('benefits')} />
+                                        <AppCard title="Sleigh Status" icon={MonitorPlay} color="bg-purple-600" onClick={() => setActiveModal('sleigh')} notificationCount={1} />
+                                        <AppCard title="Directory" icon={Users} color="bg-teal-600" onClick={() => setActiveModal('directory')} />
+                                        <AppCard title="Expenses" icon={FileText} color="bg-yellow-500" onClick={() => setActiveModal('expenses')} />
+                                        <AppCard title="Performance" icon={Briefcase} color="bg-indigo-600" onClick={() => setActiveModal('performance')} />
+                                        <AppCard title="Global Ops" icon={Globe} color="bg-red-600" onClick={() => setActiveModal('global_ops')} />
+                                    </div>
+                                </section>
+
+                                {/* Announcements Feed */}
+                                <section>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Announcements</h2>
+                                        <button className="text-[#005cb9] text-xs font-medium hover:underline">View All Announcements</button>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {posts.map(post => (
+                                            <FeedPost key={post.id} post={post} />
+                                        ))}
+                                    </div>
+                                </section>
+                            </div>
+
+                            {/* Right Col: Inbox & Widgets */}
+                            <div className="space-y-6">
+                                
+                                {/* Inbox Widget */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Inbox ({inbox.length})</h2>
+                                        <button onClick={() => setActiveModal('inbox')} className="text-[#005cb9] text-xs font-medium hover:underline">Go to Inbox</button>
+                                    </div>
+                                    <div className="bg-white rounded border border-gray-200 shadow-sm overflow-hidden max-h-[400px] overflow-y-auto">
+                                        {inbox.map((item, index) => (
+                                            <InboxRow 
+                                                key={item.id} 
+                                                item={item} 
+                                                isNew={index === 0 && item.time === 'Just now'} 
+                                                onClick={() => setActiveModal('inbox')} 
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Live Wishlist Widget */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Live Wishlist Feed</h2>
+                                        <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse"></div> LIVE
+                                        </span>
+                                    </div>
+                                    <div className="bg-white rounded border border-gray-200 shadow-sm p-4">
+                                        <div className="space-y-3">
+                                            {wishlist.map((req) => (
+                                                <div key={req.id} className="flex items-start justify-between border-b border-gray-100 last:border-0 pb-2 last:pb-0 fade-in-down">
+                                                    <div>
+                                                        <div className="flex items-center gap-1">
+                                                            <p className="font-bold text-sm text-gray-900">{req.child}</p>
+                                                            <span className="text-xs text-gray-500">• {req.location}</span>
+                                                        </div>
+                                                        <p className="text-xs text-gray-600">{req.item}</p>
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                                                            req.status === 'production' ? 'bg-blue-100 text-blue-700' :
+                                                            req.status === 'wrapped' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                                                        }`}>
+                                                            {req.status}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Quick Links Widget */}
+                                <div>
+                                    <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Quick Links</h2>
+                                    <div className="bg-white rounded border border-gray-200 shadow-sm p-2">
+                                        <div className="grid grid-cols-2 gap-2 text-center">
+                                            <div className="p-2 hover:bg-gray-50 rounded cursor-pointer" onClick={() => setActiveModal('inbox')}>
+                                                <BadgeCheck className="mx-auto text-blue-500 mb-1" size={20} />
+                                                <span className="text-xs text-gray-700 block">Approvals</span>
+                                            </div>
+                                            <div className="p-2 hover:bg-gray-50 rounded cursor-pointer">
+                                                <FileQuestion className="mx-auto text-orange-500 mb-1" size={20} />
+                                                <span className="text-xs text-gray-700 block">Help</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
