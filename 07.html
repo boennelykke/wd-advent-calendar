@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lyre Composer: 2-Word Challenge</title>
+    <!-- Font Import -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            /* User Requested Colors */
+            --bg-color: #0F2E66;
+            --col-blue: #1C98E8;
+            --col-purple: #AB65D0;
+            --col-pink: #FFC2FD;
+            --col-yellow: #FDE65E;
+            
+            --text-color: #ffffff;
+        }
+
+        body {
+            font-family: 'Archivo', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            transition: background-color 1s ease;
+        }
+
+        h1 {
+            font-weight: 900;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        p { color: #a4b0c7; margin-bottom: 30px; font-size: 0.9rem; font-weight: 400; transition: all 0.3s ease; }
+        
+        .highlight-word { color: var(--col-yellow); font-weight: 700; text-transform: uppercase; }
+
+        /* The Instrument Board */
+        .board {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            position: relative;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            justify-content: center;
+        }
+
+        .row:last-child { margin-bottom: 0; }
+
+        /* Keys */
+        .key {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            border: none;
+            font-family: 'Archivo', sans-serif;
+            font-weight: 700;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.1s ease;
+            position: relative;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+            text-transform: uppercase;
+            color: #0F2E66;
+        }
+
+        .key:active, .key.active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 rgba(0,0,0,0.2);
+            filter: brightness(1.2);
+        }
+
+        /* Color Mapping */
+        .high { background: var(--col-yellow); }
+        .mid { background: var(--col-blue); color: white; }
+        .low { background: var(--col-purple); color: white; }
+        .special { background: var(--col-pink); color: #0F2E66; border: 2px solid white; }
+
+        /* Text Area */
+        .output-container {
+            margin-top: 20px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #score {
+            width: 300px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            font-family: 'Archivo', sans-serif;
+            font-size: 20px;
+            text-align: center;
+            padding: 10px;
+            outline: none;
+            letter-spacing: 2px;
+        }
+
+        button.clear-btn {
+            margin-top:10px; 
+            background:none; 
+            border:1px solid rgba(255,255,255,0.3); 
+            color: #a4b0c7; 
+            padding: 5px 15px; 
+            border-radius: 20px; 
+            cursor: pointer;
+            font-family: 'Archivo', sans-serif;
+            font-size: 12px;
+            transition: 0.2s;
+        }
+        button.clear-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+
+        /* Victory Overlay */
+        #victory {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 46, 102, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+
+        #victory.show { opacity: 1; pointer-events: all; }
+
+        .victory-text {
+            font-size: 4rem;
+            font-weight: 900;
+            color: var(--col-pink);
+            text-shadow: 0 0 20px var(--col-purple);
+            animation: pulse 1s infinite alternate;
+        }
+
+        .sub-text { margin-top: 10px; font-size: 1.2rem; }
+
+        @keyframes pulse {
+            from { transform: scale(1); }
+            to { transform: scale(1.1); }
+        }
+
+        /* Interaction Snow Particles */
+        .snowflake {
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0.8;
+            box-shadow: 0 0 5px white;
+        }
+
+        @keyframes snow-fall {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx), 100px) scale(0.5); opacity: 0; }
+        }
+
+        /* Victory Snow */
+        .victory-snowflake {
+            position: fixed;
+            top: -10px;
+            width: 10px;
+            height: 10px;
+            background: white;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 90;
+            opacity: 0.8;
+            box-shadow: 0 0 5px white;
+            animation: victory-fall linear forwards;
+        }
+
+        @keyframes victory-fall {
+            to { transform: translateY(110vh) rotate(360deg); }
+        }
+
+        /* Confetti */
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #f00;
+            animation: fall linear forwards;
+        }
+
+        @keyframes fall {
+            to { transform: translateY(100vh) rotate(720deg); }
+        }
+
+        /* Progress Indicator */
+        .progress-indicator {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .dot {
+            width: 10px; height: 10px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+        .dot.completed { background: var(--col-yellow); box-shadow: 0 0 10px var(--col-yellow); }
+
+    </style>
+</head>
+<body>
+
+    <h1>Lyre Composer</h1>
+    <!-- Hint Removed -->
+    <p id="instruction-text">Find the 2 secret words.</p>
+
+    <div class="progress-indicator">
+        <div class="dot" id="dot-1"></div>
+        <div class="dot" id="dot-2"></div>
+    </div>
+
+    <div class="board">
+        <!-- High Octave + Special 'I' and 'O' -->
+        <div class="row" id="row-high"></div>
+        <!-- Mid Octave + Special 'K' -->
+        <div class="row" id="row-mid"></div>
+        <!-- Low Octave -->
+        <div class="row" id="row-low"></div>
+        
+        <div class="output-container">
+            <input type="text" id="score" placeholder="Notes appear here..." readonly>
+            <button class="clear-btn" onclick="clearScore()">CLEAR SHEET</button>
+        </div>
+    </div>
+
+    <div id="victory">
+        <div class="victory-text">MERRY CHRISTMAS!</div>
+        <div class="sub-text">Playing: Jingle Bells</div>
+        <button onclick="closeVictory()" style="margin-top:20px; padding:10px 30px; font-size:1.2rem; font-family:'Archivo'; font-weight:700; background:var(--col-yellow); color:#0F2E66; border:none; cursor:pointer; border-radius:50px;">Play Again</button>
+    </div>
+
+<script>
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContext();
+
+    const notes = {
+        // High Row (Yellow)
+        'q': { f: 523.25, t: 'high' }, 
+        'w': { f: 587.33, t: 'high' }, 
+        'e': { f: 659.25, t: 'high' }, 
+        'r': { f: 698.46, t: 'high' }, 
+        't': { f: 783.99, t: 'high' }, 
+        'y': { f: 880.00, t: 'high' }, 
+        'u': { f: 987.77, t: 'high' }, 
+        'i': { f: 1046.5, t: 'high' }, // Added for CHRISTMAS
+        'o': { f: 1108.7, t: 'special' },
+
+        // Mid Row (Blue)
+        'a': { f: 261.63, t: 'mid' },  
+        's': { f: 293.66, t: 'mid' },  
+        'd': { f: 329.63, t: 'mid' },  
+        'f': { f: 349.23, t: 'mid' },  
+        'g': { f: 392.00, t: 'mid' },  
+        'h': { f: 440.00, t: 'mid' },  
+        'j': { f: 493.88, t: 'mid' },  
+        'k': { f: 523.25, t: 'special' },
+
+        // Low Row (Purple)
+        'z': { f: 130.81, t: 'low' },  
+        'x': { f: 146.83, t: 'low' },  
+        'c': { f: 164.81, t: 'low' },  
+        'v': { f: 174.61, t: 'low' },  
+        'b': { f: 196.00, t: 'low' },  
+        'n': { f: 220.00, t: 'low' },  
+        'm': { f: 246.94, t: 'low' }   
+    };
+
+    const JINGLE_BELLS = [
+        {k:'d', d:300}, {k:'d', d:300}, {k:'d', d:600}, 
+        {k:'d', d:300}, {k:'d', d:300}, {k:'d', d:600}, 
+        {k:'d', d:300}, {k:'g', d:300}, {k:'a', d:300}, {k:'s', d:300}, {k:'d', d:900},
+        {k:'f', d:300}, {k:'f', d:300}, {k:'f', d:300}, {k:'f', d:300}, {k:'f', d:300}, 
+        {k:'d', d:300}, {k:'d', d:300}, {k:'d', d:300}, {k:'d', d:300}, 
+        {k:'s', d:300}, {k:'s', d:300}, {k:'d', d:300}, {k:'s', d:400}, {k:'g', d:800}
+    ];
+
+    const layout = [
+        ['q','w','e','r','t','y','u','i','o'],
+        ['a','s','d','f','g','h','j','k'],
+        ['z','x','c','v','b','n','m']
+    ];
+
+    const rowIds = ['row-high', 'row-mid', 'row-low'];
+
+    layout.forEach((rowKeys, index) => {
+        const container = document.getElementById(rowIds[index]);
+        rowKeys.forEach(char => {
+            const btn = document.createElement('button');
+            btn.innerText = char.toUpperCase();
+            btn.className = `key ${notes[char].t}`;
+            btn.dataset.key = char;
+            btn.onclick = () => play(char);
+            container.appendChild(btn);
+        });
+    });
+
+    // --- GAME LOGIC ---
+    let inputBuffer = [];
+    const WORD_1 = "workday";
+    const WORD_2 = "christmas";
+    let hasFoundWord1 = false;
+    let snowInterval = null;
+
+    function play(key, fromAuto = false) {
+        key = key.toLowerCase();
+        if(!notes[key]) return;
+
+        // Audio
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle'; 
+        osc.frequency.value = notes[key].f;
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 1.5);
+
+        // Visuals
+        const btn = document.querySelector(`button[data-key="${key}"]`);
+        if(btn) {
+            btn.classList.add('active');
+            setTimeout(() => btn.classList.remove('active'), 100);
+            
+            const rect = btn.getBoundingClientRect();
+            spawnSnow(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        }
+
+        // Challenge Logic
+        if (!fromAuto) {
+            const score = document.getElementById('score');
+            score.value = (score.value + key.toUpperCase() + " ").slice(-30); 
+            
+            inputBuffer.push(key);
+            if(inputBuffer.length > 20) inputBuffer.shift(); // Increased buffer for "christmas"
+
+            const currentStr = inputBuffer.join('');
+
+            // CHECK STAGE 1
+            if (!hasFoundWord1 && currentStr.endsWith(WORD_1)) {
+                hasFoundWord1 = true;
+                // Update UI - Hint Removed
+                document.getElementById('instruction-text').innerHTML = "First word found! Find the second word.";
+                document.getElementById('dot-1').classList.add('completed');
+                createConfetti(10); // Small confetti
+                
+                // Clear buffer to prevent accidental overlap (e.g. workdaychristmas)
+                inputBuffer = []; 
+            }
+            // CHECK STAGE 2
+            else if (hasFoundWord1 && currentStr.endsWith(WORD_2)) {
+                document.getElementById('dot-2').classList.add('completed');
+                triggerVictory();
+            }
+        }
+    }
+
+    function spawnSnow(x, y) {
+        const particleCount = 6;
+        for (let i = 0; i < particleCount; i++) {
+            const flake = document.createElement('div');
+            flake.className = 'snowflake';
+            const offsetX = (Math.random() - 0.5) * 40;
+            const offsetY = (Math.random() - 0.5) * 40;
+            flake.style.left = (x + offsetX) + 'px';
+            flake.style.top = (y + offsetY) + 'px';
+            const tx = (Math.random() - 0.5) * 100 + 'px'; 
+            const duration = (Math.random() * 0.5 + 0.5) + 's';
+            flake.style.setProperty('--tx', tx);
+            flake.style.animation = `snow-fall ${duration} ease-out forwards`;
+            document.body.appendChild(flake);
+            setTimeout(() => flake.remove(), 1000);
+        }
+    }
+
+    function startVictorySnow() {
+        if(snowInterval) clearInterval(snowInterval);
+        snowInterval = setInterval(() => {
+            const flake = document.createElement('div');
+            flake.className = 'victory-snowflake';
+            flake.style.left = Math.random() * 100 + 'vw';
+            const size = Math.random() * 5 + 5 + 'px';
+            flake.style.width = size;
+            flake.style.height = size;
+            const duration = Math.random() * 3 + 2 + 's';
+            flake.style.animationDuration = duration;
+            document.body.appendChild(flake);
+            setTimeout(() => flake.remove(), parseFloat(duration) * 1000);
+        }, 100);
+    }
+
+    function playSong(melody) {
+        let noteIndex = 0;
+        function playNext() {
+            if (noteIndex >= melody.length) return;
+            if (!document.getElementById('victory').classList.contains('show')) return;
+            const note = melody[noteIndex];
+            play(note.k, true); 
+            noteIndex++;
+            setTimeout(playNext, note.d);
+        }
+        playNext();
+    }
+
+    function triggerVictory() {
+        document.getElementById('victory').classList.add('show');
+        createConfetti(50);
+        startVictorySnow();
+        setTimeout(() => playSong(JINGLE_BELLS), 1000);
+    }
+
+    function closeVictory() {
+        document.getElementById('victory').classList.remove('show');
+        if(snowInterval) clearInterval(snowInterval);
+        
+        // Reset Logic
+        inputBuffer = [];
+        hasFoundWord1 = false;
+        // Hint Removed
+        document.getElementById('instruction-text').innerHTML = "Find the 2 secret words.";
+        document.getElementById('dot-1').classList.remove('completed');
+        document.getElementById('dot-2').classList.remove('completed');
+        
+        clearScore();
+    }
+
+    function clearScore() {
+        document.getElementById('score').value = "";
+    }
+
+    function createConfetti(amount) {
+        const colors = ['#1C98E8', '#AB65D0', '#FFC2FD', '#FDE65E'];
+        for(let i=0; i<amount; i++) {
+            const conf = document.createElement('div');
+            conf.className = 'confetti';
+            conf.style.left = Math.random() * 100 + 'vw';
+            conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            conf.style.animationDuration = (Math.random() * 3 + 2) + 's';
+            document.getElementById('victory').appendChild(conf);
+        }
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if(!e.repeat && notes[e.key.toLowerCase()]) {
+            play(e.key);
+        }
+    });
+
+    window.addEventListener('click', () => {
+        if(ctx.state === 'suspended') ctx.resume();
+    }, {once:true});
+
+</script>
+</body>
+</html>
