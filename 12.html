@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heart Cutter 3D</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #333; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .hud-panel {
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 30px;
+            backdrop-filter: blur(5px);
+            pointer-events: auto;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+
+        h1 { margin: 0 0 5px 0; font-size: 1.5rem; color: #ff6b6b; text-transform: uppercase; letter-spacing: 2px; }
+        p { margin: 0; font-size: 0.9rem; color: #ccc; }
+
+        #controls {
+            align-self: center;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #c0392b;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        button:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #c0392b;
+        }
+
+        button:disabled {
+            background: #555;
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Result Modal */
+        #result-modal {
+            position: absolute;
+            bottom: 40px; 
+            left: 50%;
+            transform: translateX(-50%) scale(0.9);
+            
+            /* Glassmorphism / Transparent Style */
+            background: rgba(0, 0, 0, 0.75); 
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            
+            padding: 20px 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            pointer-events: auto;
+            
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 100;
+            min-width: 300px;
+        }
+
+        #result-modal.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) scale(1);
+        }
+
+        #result-title { font-size: 1.8rem; margin-bottom: 5px; font-weight: 900; }
+        #result-score { font-size: 3rem; margin: 5px 0; color: #fff; font-weight: bold; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        #result-message { color: #ddd; margin-bottom: 15px; font-size: 1rem; }
+        
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #f00;
+            animation: fall linear forwards;
+        }
+
+        @keyframes fall {
+            to { transform: translateY(100vh) rotate(720deg); }
+        }
+
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="hud-panel" style="align-self: flex-start;">
+            <h1>Scissor Master</h1>
+            <p>Hold <b>Left Click</b> to cut along the dashed line.</p>
+            <p>Try to cut a perfect <b>HEART</b> shape.</p>
+        </div>
+
+        <div id="controls" class="hud-panel">
+            <button id="btn-done" onclick="evaluateShape()">I'm Done!</button>
+            <button id="btn-reset" onclick="resetGame()" style="background:#555; box-shadow: 0 4px 0 #333; margin-left:10px;">Reset</button>
+        </div>
+    </div>
+
+    <div id="result-modal">
+        <div id="result-title">Title</div>
+        <div id="result-score">0%</div>
+        <div id="result-message">Message</div>
+        <button onclick="resetGame()">Try Again</button>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- Game Configuration ---
+        const PAPER_SIZE = 20;
+        const TEXTURE_RES = 1024;
+        let isCutting = false;
+        let gameEnded = false;
+        let cutoutMesh = null;
+        
+        // --- Three.js Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e); // A more atmospheric background
+        scene.fog = new THREE.Fog(0x1a1a2e, 30, 80);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 35, 20); 
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // --- Lights ---
+        // Hemisphere Light for natural sky and ground reflections
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+        hemiLight.position.set(0, 20, 0);
+        scene.add(hemiLight);
+
+        // Directional Light for main sunlight
+        const dirLight = new THREE.DirectionalLight(0xffddcc, 1.5); // Warmer sun color
+        dirLight.position.set(15, 30, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 50;
+        dirLight.shadow.camera.left = -20;
+        dirLight.shadow.camera.right = 20;
+        dirLight.shadow.camera.top = 20;
+        dirLight.shadow.camera.bottom = -20;
+        dirLight.shadow.bias = -0.0001; // Reduce shadow artifacts
+        scene.add(dirLight);
+
+        // --- The Table (Procedural Wood Texture) ---
+        const tableGeometry = new THREE.PlaneGeometry(100, 100);
+        
+        // Generate a wood texture programmatically to avoid CORS issues
+        function createWoodTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            
+            // Base brown color
+            ctx.fillStyle = '#5D4037'; 
+            ctx.fillRect(0, 0, 1024, 1024);
+            
+            // Draw Grain
+            for(let i=0; i<600; i++) {
+                ctx.strokeStyle = `rgba(30, 15, 5, ${Math.random() * 0.15})`;
+                ctx.lineWidth = 1 + Math.random() * 4;
+                
+                ctx.beginPath();
+                // Wavy lines
+                const x = Math.random() * 1024;
+                ctx.moveTo(x, 0);
+                ctx.bezierCurveTo(
+                    x + Math.random() * 100 - 50, 300, 
+                    x + Math.random() * 100 - 50, 700, 
+                    x + Math.random() * 100 - 50, 1024
+                );
+                ctx.stroke();
+            }
+            
+            // Add some noise
+            const imageData = ctx.getImageData(0,0,1024,1024);
+            const data = imageData.data;
+            for(let i=0; i < data.length; i+=4) {
+                const noise = (Math.random() - 0.5) * 20;
+                data[i] += noise;
+                data[i+1] += noise;
+                data[i+2] += noise;
+            }
+            ctx.putImageData(imageData, 0, 0);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(4, 4);
+            return tex;
+        }
+
+        const tableTexture = createWoodTexture();
+        const tableMaterial = new THREE.MeshStandardMaterial({ 
+            map: tableTexture, 
+            roughness: 0.6,
+            color: 0xffffff
+        });
+        const table = new THREE.Mesh(tableGeometry, tableMaterial);
+        table.rotation.x = -Math.PI / 2;
+        table.position.y = -0.2; 
+        table.receiveShadow = true;
+        scene.add(table);
+
+        // --- The Paper (Dynamic Texture with Transparency) ---
+        const canvas = document.createElement('canvas');
+        canvas.width = TEXTURE_RES;
+        canvas.height = TEXTURE_RES;
+        const ctx = canvas.getContext('2d');
+
+        function resetPaper() {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = '#e74c3c'; // Nice red
+            ctx.fillRect(0, 0, TEXTURE_RES, TEXTURE_RES);
+            
+            // Texture
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
+            for(let i=0; i<5000; i++) {
+                ctx.fillRect(Math.random()*TEXTURE_RES, Math.random()*TEXTURE_RES, 2, 2);
+            }
+
+            // Hint Outline
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 8;
+            ctx.setLineDash([20, 20]);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            ctx.beginPath();
+            const scale = TEXTURE_RES / 40; 
+            const offsetX = TEXTURE_RES / 2;
+            const offsetY = TEXTURE_RES / 2 + 50; 
+
+            for(let t = 0; t < Math.PI * 2; t += 0.05) {
+                let hx = 16 * Math.pow(Math.sin(t), 3);
+                let hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                const cx = offsetX + hx * scale;
+                const cy = offsetY - hy * scale; 
+                if(t===0) ctx.moveTo(cx, cy);
+                else ctx.lineTo(cx, cy);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            if(paperTexture) paperTexture.needsUpdate = true;
+        }
+        
+        const paperTexture = new THREE.CanvasTexture(canvas);
+        const paperGeometry = new THREE.PlaneGeometry(PAPER_SIZE, PAPER_SIZE);
+
+        // Important: Transparent must be true so erased pixels show what's behind (the table)
+        const paperMaterial = new THREE.MeshStandardMaterial({ 
+            map: paperTexture, 
+            roughness: 0.9,
+            side: THREE.DoubleSide,
+            transparent: true,
+            alphaTest: 0.1 // Helps with shadow casting on transparent textures
+        });
+        const paper = new THREE.Mesh(paperGeometry, paperMaterial);
+        paper.rotation.x = -Math.PI / 2;
+        paper.receiveShadow = true;
+        // paper.castShadow = true; // Casting shadow with alpha map can be expensive, optional
+        scene.add(paper);
+
+        resetPaper();
+
+        // --- Scissor Setup ---
+        const scissorGroup = new THREE.Group();
+        scene.add(scissorGroup);
+
+        const scissorModel = new THREE.Group();
+        scissorGroup.add(scissorModel);
+
+        const materialBlade = new THREE.MeshStandardMaterial({ color: 0xecf0f1, metalness: 0.9, roughness: 0.3 });
+        const materialHandle = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.4, metalness: 0.1 });
+
+        function createScissorHalf(isLeft) {
+            const container = new THREE.Group();
+            const bladeShape = new THREE.Shape();
+            bladeShape.moveTo(0, 0);
+            bladeShape.lineTo(0.6, 0);
+            bladeShape.lineTo(0.1, 5.5);
+            bladeShape.lineTo(0, 5.7);
+            bladeShape.lineTo(-0.1, 5.5);
+            bladeShape.lineTo(-0.1, 0);
+            
+            const extrudeSettings = { depth: 0.08, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2 };
+            const bladeGeo = new THREE.ExtrudeGeometry(bladeShape, extrudeSettings);
+            const blade = new THREE.Mesh(bladeGeo, materialBlade);
+            blade.castShadow = true;
+            blade.position.set(-0.25, 1.5, 0); 
+
+            const handleGeo = new THREE.TorusGeometry(0.7, 0.15, 16, 32);
+            const handle = new THREE.Mesh(handleGeo, materialHandle);
+            handle.scale.set(1, 1.4, 1); 
+            
+            const neckGeo = new THREE.BoxGeometry(0.8, 2.0, 0.15);
+            const neck = new THREE.Mesh(neckGeo, materialBlade);
+            neck.position.set(0, 0.5, 0.04);
+
+            blade.position.set(-0.2, 1.0, 0);
+            handle.position.set(0, -1.5, 0);
+            neck.position.set(0, 0, 0);
+
+            container.add(blade);
+            container.add(handle);
+            container.add(neck);
+            return container;
+        }
+
+        const blade1Group = createScissorHalf(true);
+        const blade2Group = createScissorHalf(false);
+        blade2Group.scale.x = -1;
+        blade2Group.position.z = 0.01;
+        blade1Group.position.z = -0.01;
+
+        const screwGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.3, 16);
+        const screw = new THREE.Mesh(screwGeo, new THREE.MeshStandardMaterial({color:0x7f8c8d}));
+        screw.rotation.x = Math.PI/2;
+        
+        scissorModel.add(blade1Group);
+        scissorModel.add(blade2Group);
+        scissorModel.add(screw);
+
+        blade1Group.rotation.z = 0.1;
+        blade2Group.rotation.z = -0.1;
+
+        // Orientation: Tilted 20 degrees from vertical
+        scissorModel.rotation.y = Math.PI / 2 - (20 * Math.PI / 180);
+
+        // --- Interaction Logic ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const planeIntersect = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+        let lastCutPos = null;
+        let cutPath = [];
+        let currentRotation = 0;
+        
+        const SCISSOR_TIP_OFFSET = 7.2;
+        
+        function onMouseMove(event) {
+            if(gameEnded) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const target = new THREE.Vector3();
+            raycaster.ray.intersectPlane(planeIntersect, target);
+            
+            if (target) {
+                const fixedRotation = Math.PI;
+
+                scissorGroup.rotation.y = fixedRotation;
+                scissorGroup.rotation.x = -Math.PI / 2;
+
+                const dirX = Math.sin(fixedRotation);
+                const dirZ = Math.cos(fixedRotation);
+                
+                scissorGroup.position.x = target.x - dirX * SCISSOR_TIP_OFFSET;
+                scissorGroup.position.z = target.z - dirZ * SCISSOR_TIP_OFFSET;
+                
+                scissorGroup.position.y = 1.0; 
+            }
+
+            if (isCutting) {
+                const intersects = raycaster.intersectObject(paper);
+                if (intersects.length > 0) {
+                    const uv = intersects[0].uv;
+                    const x = uv.x * TEXTURE_RES;
+                    const y = (1 - uv.y) * TEXTURE_RES; 
+                    drawCut(x, y);
+                    cutPath.push({x: uv.x, y: uv.y}); 
+                    lastCutPos = {x, y};
+
+                    // Snip animation
+                    const time = Date.now() * 0.02;
+                    blade1Group.rotation.z = 0.2 + Math.sin(time) * 0.3;
+                    blade2Group.rotation.z = -0.2 - Math.sin(time) * 0.3;
+                }
+            } else {
+                blade1Group.rotation.z = THREE.MathUtils.lerp(blade1Group.rotation.z, 0.4, 0.1);
+                blade2Group.rotation.z = THREE.MathUtils.lerp(blade2Group.rotation.z, -0.4, 0.1);
+                lastCutPos = null;
+            }
+        }
+
+        function drawCut(x, y) {
+            // Explicitly set opacity to 1.0 (white) before erasing
+            ctx.strokeStyle = '#ffffff'; 
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.lineWidth = 15;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            if (lastCutPos) ctx.moveTo(lastCutPos.x, lastCutPos.y);
+            else ctx.moveTo(x, y);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+
+            paperTexture.needsUpdate = true;
+        }
+
+        function onMouseDown() {
+            if(gameEnded) return;
+            isCutting = true;
+        }
+
+        function onMouseUp() {
+            isCutting = false;
+            lastCutPos = null;
+        }
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mouseup', onMouseUp);
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- Logic: Create Cutout Mesh ---
+
+        function createCutoutMesh() {
+            if (cutPath.length < 3) return;
+
+            // 1. Create Shape
+            const shape = new THREE.Shape();
+            const firstP = cutPath[0];
+            shape.moveTo((firstP.x - 0.5) * PAPER_SIZE, (firstP.y - 0.5) * PAPER_SIZE);
+
+            for (let i = 1; i < cutPath.length; i++) {
+                const p = cutPath[i];
+                shape.lineTo((p.x - 0.5) * PAPER_SIZE, (p.y - 0.5) * PAPER_SIZE);
+            }
+            shape.closePath(); 
+
+            // 2. Extrude
+            const extrudeSettings = {
+                depth: 0.1,
+                bevelEnabled: false
+            };
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            
+            geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            geometry.translate(-center.x, -center.y, -center.z);
+
+            // 3. Material
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xe74c3c,
+                roughness: 0.9,
+                side: THREE.DoubleSide
+            });
+
+            // 4. Mesh
+            cutoutMesh = new THREE.Mesh(geometry, material);
+            cutoutMesh.rotation.x = -Math.PI / 2;
+            cutoutMesh.position.set(center.x, 0, -center.y); 
+            scene.add(cutoutMesh);
+            
+            // 5. Create "Hole" in canvas by clearing pixels
+            // We must explicitly set the fill style to opaque white before erasing.
+            // destination-out uses the alpha of the source (this fill) to determine how much to erase.
+            // If we don't set this, it might use the last set color (which was 5% opacity noise), failing to erase fully.
+            ctx.fillStyle = '#ffffff'; 
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.beginPath();
+            
+            const p0 = cutPath[0];
+            ctx.moveTo(p0.x * TEXTURE_RES, (1-p0.y) * TEXTURE_RES);
+            
+            for(let i=1; i<cutPath.length; i++) {
+                const p = cutPath[i];
+                ctx.lineTo(p.x * TEXTURE_RES, (1-p.y) * TEXTURE_RES);
+            }
+            ctx.closePath();
+            ctx.fill();
+            paperTexture.needsUpdate = true;
+        }
+
+        function evaluateShape() {
+            if(cutPath.length < 50) {
+                showResult(0, "Too short", "Did you cut anything?");
+                return;
+            }
+
+            // --- Evaluation Math ---
+            let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+            cutPath.forEach(p => {
+                if(p.x < minX) minX=p.x; if(p.x > maxX) maxX=p.x;
+                if(p.y < minY) minY=p.y; if(p.y > maxY) maxY=p.y;
+            });
+
+            const width = maxX - minX;
+            const height = maxY - minY;
+            const aspectRatio = width / height;
+
+            const normalizedPath = cutPath.map(p => ({ x: (p.x-minX)/width, y: (p.y-minY)/height }));
+            
+            const idealPoints = [];
+            for(let t=0; t<Math.PI*2; t+=0.1) {
+                let hx = 16 * Math.pow(Math.sin(t), 3);
+                let hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                idealPoints.push({x: hx, y: hy});
+            }
+            let hMinX=Infinity, hMaxX=-Infinity, hMinY=Infinity, hMaxY=-Infinity;
+            idealPoints.forEach(p => {
+                if(p.x < hMinX) hMinX=p.x; if(p.x > hMaxX) hMaxX=p.x;
+                if(p.y < hMinY) hMinY=p.y; if(p.y > hMaxY) hMaxY=p.y;
+            });
+            const hW = hMaxX - hMinX;
+            const hH = hMaxY - hMinY;
+            const normIdeal = idealPoints.map(p => ({ x: (p.x-hMinX)/hW, y: (p.y-hMinY)/hH }));
+
+            let totalDist = 0;
+            const step = Math.floor(normalizedPath.length / 100) || 1; 
+            let count = 0;
+            for(let i=0; i<normalizedPath.length; i+=step) {
+                const p1 = normalizedPath[i];
+                let minDist = Infinity;
+                for(let j=0; j<normIdeal.length; j++) {
+                    const p2 = normIdeal[j];
+                    const d = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
+                    if(d < minDist) minDist = d;
+                }
+                totalDist += minDist;
+                count++;
+            }
+            const avgError = totalDist / count;
+            let score = Math.max(0, 100 - (avgError * 700)); 
+            if(aspectRatio < 0.5 || aspectRatio > 1.5) score -= 20;
+            score = Math.round(Math.max(0, score));
+
+            createCutoutMesh();
+
+            let title = "Nice try";
+            let msg = "Keep practicing!";
+            if(score > 90) { title = "Perfection!"; msg = "You are a true artist!"; spawnConfetti(); }
+            else if(score > 75) { title = "Great Job!"; msg = "That looks lovely."; spawnConfetti(); }
+            else if(score > 50) { title = "Not Bad"; msg = "It resembles a heart."; }
+            else { title = "Oof"; msg = "Maybe try again?"; }
+
+            showResult(score, title, msg);
+        }
+
+        function showResult(score, title, message) {
+            gameEnded = true;
+            const modal = document.getElementById('result-modal');
+            
+            const scoreColor = score > 75 ? '#2ecc71' : (score > 40 ? '#f1c40f' : '#e74c3c');
+            
+            document.getElementById('result-title').innerText = title;
+            document.getElementById('result-title').style.color = '#fff';
+            document.getElementById('result-score').innerText = score + "%";
+            document.getElementById('result-score').style.color = scoreColor;
+            document.getElementById('result-message').innerText = message;
+            
+            modal.classList.add('active');
+        }
+
+        function resetGame() {
+            cutPath = [];
+            resetPaper();
+            gameEnded = false;
+            document.getElementById('result-modal').classList.remove('active');
+            
+            if(cutoutMesh) {
+                scene.remove(cutoutMesh);
+                cutoutMesh.geometry.dispose();
+                cutoutMesh = null;
+            }
+
+            const confetti = document.querySelectorAll('.confetti');
+            confetti.forEach(c => c.remove());
+        }
+
+        function spawnConfetti() {
+            const colors = ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#9b59b6'];
+            for(let i=0; i<50; i++) {
+                const conf = document.createElement('div');
+                conf.className = 'confetti';
+                conf.style.left = Math.random() * 100 + 'vw';
+                conf.style.top = -10 + 'px';
+                conf.style.backgroundColor = colors[Math.floor(Math.random()*colors.length)];
+                conf.style.animationDuration = (Math.random() * 2 + 2) + 's';
+                document.body.appendChild(conf);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(cutoutMesh) {
+                cutoutMesh.position.y = THREE.MathUtils.lerp(cutoutMesh.position.y, 5, 0.02);
+                cutoutMesh.rotation.z += 0.005;
+                cutoutMesh.rotation.y += 0.005;
+            }
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+    </script>
+</body>
+</html>

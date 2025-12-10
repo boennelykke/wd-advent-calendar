@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Christmas Tree Express</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #2c3e50;
+            font-family: 'Nunito', sans-serif;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }
+
+        h1 {
+            font-family: 'Mountains of Christmas', cursive;
+            margin: 0;
+            font-size: 3em;
+            color: #e74c3c;
+            text-shadow: 2px 2px 0px #fff;
+        }
+
+        .controls {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 10px;
+            backdrop-filter: blur(5px);
+            display: inline-block;
+        }
+
+        .key {
+            display: inline-block;
+            background: #eee;
+            color: #333;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            box-shadow: 0 2px 0 #ccc;
+            font-size: 0.9em;
+            margin: 0 2px;
+        }
+
+        #message-area {
+            position: absolute;
+            bottom: 50px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .toast {
+            background: rgba(255, 255, 255, 0.9);
+            color: #2c3e50;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            display: inline-block;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        #score-board {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            text-align: right;
+            color: white;
+        }
+        
+        .score-box {
+            background: rgba(231, 76, 60, 0.9);
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: 2px solid white;
+            font-size: 1.5em;
+            font-weight: bold;
+            display: inline-block;
+        }
+        
+        #win-overlay {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            font-family: 'Mountains of Christmas', cursive;
+            z-index: 10;
+        }
+        
+        #win-overlay h2 {
+            font-size: 5em;
+            margin: 0;
+            color: #e67e22; /* Warm gold */
+        }
+        
+        #win-overlay p {
+            font-size: 2em;
+            font-family: 'Nunito', sans-serif;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h1>Christmas Tree Express</h1>
+        <div class="controls">
+            <div><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> to walk/drive</div>
+            <div style="margin-top:5px;"><span class="key">Space</span> to chop/carry/enter</div>
+        </div>
+    </div>
+
+    <div id="score-board">
+        <div class="score-box">Trees Delivered: <span id="score-count">0</span> / 10</div>
+    </div>
+
+    <div id="message-area">
+        <div id="toast" class="toast">Message</div>
+    </div>
+    
+    <div id="win-overlay">
+        <h2>Merry Christmas!</h2>
+        <p>You delivered all the trees.</p>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        /**
+         * GAME LOGIC & ENGINE
+         * Single file implementation for "Christmas Tree Express"
+         */
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score-count');
+        const toastEl = document.getElementById('toast');
+        const winOverlay = document.getElementById('win-overlay');
+        const uiLayer = document.getElementById('ui-layer');
+
+        // --- Constants ---
+        const WORLD_WIDTH = 3000;
+        const WORLD_HEIGHT = 3000;
+        const TILE_SIZE = 50;
+        const TREE_COUNT = 150;
+        const WIN_SCORE = 10;
+        const TARGET_GOOD_TREES = 20;
+        
+        // --- Game State ---
+        let lastTime = 0;
+        let score = 0;
+        let gameState = 'PLAYING'; // 'PLAYING', 'WIN'
+        let camera = { x: 0, y: 0 };
+        let particles = [];
+        let snowParticles = [];
+        let fireParticles = []; // For fireplace
+        let toastTimeout;
+        let audioContext = null;
+
+        // --- Input Handling ---
+        const keys = {
+            w: false, a: false, s: false, d: false,
+            ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false,
+            " ": false
+        };
+        const prevKeys = { " ": false };
+
+        window.addEventListener('keydown', (e) => {
+            if(keys.hasOwnProperty(e.key) || e.key === " ") {
+                keys[e.key] = true;
+                // Init audio on first interaction
+                if (!audioContext) initAudio();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if(keys.hasOwnProperty(e.key) || e.key === " ") keys[e.key] = false;
+        });
+
+        function isKeyPressed(key) {
+            return keys[key] || (key === 'w' && keys.ArrowUp) || (key === 'a' && keys.ArrowLeft) || (key === 's' && keys.ArrowDown) || (key === 'd' && keys.ArrowRight);
+        }
+
+        function isKeyJustPressed(key) {
+            return keys[key] && !prevKeys[key];
+        }
+
+        function showToast(msg) {
+            toastEl.textContent = msg;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toastEl.classList.remove('show');
+            }, 3000);
+        }
+
+        // --- Audio System (Simple Synth) ---
+        function initAudio() {
+            try {
+                window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioContext = new AudioContext();
+            } catch(e) {
+                console.log('Web Audio API not supported');
+            }
+        }
+
+        function playJingleBells() {
+            if (!audioContext) return;
+            
+            const tempo = 0.25;
+            const notes = [
+                {f: 329.63, d: 1}, {f: 329.63, d: 1}, {f: 329.63, d: 2}, // E E E
+                {f: 329.63, d: 1}, {f: 329.63, d: 1}, {f: 329.63, d: 2}, // E E E
+                {f: 329.63, d: 1}, {f: 392.00, d: 1}, {f: 261.63, d: 1.5}, {f: 293.66, d: 0.5}, {f: 329.63, d: 4}, // E G C D E
+                {f: 349.23, d: 1}, {f: 349.23, d: 1}, {f: 349.23, d: 1.5}, {f: 349.23, d: 0.5}, // F F F F
+                {f: 349.23, d: 1}, {f: 329.63, d: 1}, {f: 329.63, d: 1}, {f: 329.63, d: 0.5}, {f: 329.63, d: 0.5}, // F E E E E
+                {f: 329.63, d: 1}, {f: 293.66, d: 1}, {f: 293.66, d: 1}, {f: 329.63, d: 1}, {f: 293.66, d: 2}, {f: 392.00, d: 2} // E D D E D G
+            ];
+
+            let time = audioContext.currentTime;
+            
+            notes.forEach(note => {
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                
+                osc.type = 'sine'; // Bell-ish tone (sine is soft, triangle is brassy)
+                osc.frequency.setValueAtTime(note.f, time);
+                
+                gain.gain.setValueAtTime(0.1, time);
+                gain.gain.exponentialRampToValueAtTime(0.001, time + note.d * tempo - 0.05);
+
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+
+                osc.start(time);
+                osc.stop(time + note.d * tempo);
+
+                time += note.d * tempo;
+            });
+            
+            // Loop functionality
+            setTimeout(() => {
+                if (gameState === 'WIN') playJingleBells();
+            }, time * 1000 - audioContext.currentTime * 1000 + 1000);
+        }
+
+        // --- Classes ---
+
+        class Vector2 {
+            constructor(x, y) { this.x = x; this.y = y; }
+            add(v) { return new Vector2(this.x + v.x, this.y + v.y); }
+            sub(v) { return new Vector2(this.x - v.x, this.y - v.y); }
+            mag() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+            normalize() {
+                const m = this.mag();
+                return m === 0 ? new Vector2(0,0) : new Vector2(this.x/m, this.y/m);
+            }
+            scale(s) { return new Vector2(this.x * s, this.y * s); }
+            dist(v) { return Math.sqrt((this.x - v.x)**2 + (this.y - v.y)**2); }
+        }
+
+        class Particle {
+            constructor(x, y, type) {
+                this.pos = new Vector2(x, y);
+                this.type = type; // 'wood', 'snow', 'exhaust', 'fire'
+                this.life = 1.0;
+                
+                if (type === 'wood') {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 3 + 1;
+                    this.vel = new Vector2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+                    this.size = Math.random() * 4 + 2;
+                    this.color = '#d35400';
+                    this.decay = 0.05;
+                } else if (type === 'exhaust') {
+                    const angle = Math.random() * Math.PI * 2;
+                    this.vel = new Vector2(Math.cos(angle) * 0.5, Math.sin(angle) * 0.5);
+                    this.size = Math.random() * 5 + 3;
+                    this.color = 'rgba(200, 200, 200, 0.5)';
+                    this.decay = 0.02;
+                } else if (type === 'fire') {
+                    this.vel = new Vector2((Math.random()-0.5), -Math.random()*2 - 1);
+                    this.size = Math.random() * 6 + 4;
+                    this.color = Math.random() > 0.5 ? '#e74c3c' : '#f1c40f';
+                    this.decay = 0.03;
+                }
+            }
+
+            update() {
+                this.pos = this.pos.add(this.vel);
+                this.life -= this.decay;
+                if (this.type === 'wood') this.vel = this.vel.scale(0.9); // Friction
+            }
+
+            draw(ctx) {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                if (this.type === 'fire') {
+                    ctx.beginPath();
+                    ctx.arc(this.pos.x, this.pos.y, this.size, 0, Math.PI*2);
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(this.pos.x - this.size/2, this.pos.y - this.size/2, this.size, this.size);
+                }
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class SnowFlake {
+            constructor(boundsX, boundsY) {
+                this.boundsX = boundsX || canvas.width;
+                this.boundsY = boundsY || canvas.height;
+                this.init();
+            }
+
+            init() {
+                this.x = Math.random() * this.boundsX;
+                this.y = Math.random() * this.boundsY;
+                this.z = Math.random() * 0.5 + 0.5; // Depth
+                this.speed = Math.random() * 1 + 0.5;
+                this.size = Math.random() * 2 + 1;
+            }
+
+            update(cameraVel) {
+                this.y += this.speed * this.z;
+                // Parallax effect
+                this.x -= (cameraVel ? cameraVel.x : 0) * this.z * 0.1;
+                this.y -= (cameraVel ? cameraVel.y : 0) * this.z * 0.1;
+
+                if (this.y > this.boundsY) {
+                    this.y = -10;
+                    this.x = Math.random() * this.boundsX;
+                }
+                if (this.x > this.boundsX) this.x = 0;
+                if (this.x < 0) this.x = this.boundsX;
+            }
+
+            draw(ctx) {
+                ctx.fillStyle = 'white';
+                ctx.globalAlpha = 0.7 * this.z;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.z, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class Tree {
+            constructor(x, y, type) {
+                this.pos = new Vector2(x, y);
+                this.type = type; // 'good', 'bent', 'small'
+                this.health = 100;
+                this.isFelled = false;
+                this.shake = 0;
+                
+                // Set visuals based on type
+                if (this.type === 'good') {
+                    this.height = 40 + Math.random() * 30;
+                    this.widthScale = 1.0;
+                    this.lean = 0;
+                } else if (this.type === 'small') {
+                    this.height = 15 + Math.random() * 10;
+                    this.widthScale = 0.6;
+                    this.lean = 0;
+                } else if (this.type === 'bent') {
+                    this.height = 35 + Math.random() * 20;
+                    this.widthScale = 0.9;
+                    this.lean = (Math.random() > 0.5 ? 1 : -1) * (0.2 + Math.random() * 0.3); // Significant lean
+                }
+            }
+
+            hit() {
+                if (this.isFelled) return;
+                
+                // Feedback for bad trees
+                if (this.type !== 'good') {
+                    this.shake = 10;
+                    const msg = this.type === 'small' ? "Too small! Find a bigger one." : "Too crooked! Find a straight one.";
+                    showToast(msg);
+                    return;
+                }
+
+                this.shake = 10;
+                this.health -= 25; // 4 hits to fell
+                
+                // Spawn particles
+                for(let i=0; i<5; i++) {
+                    particles.push(new Particle(this.pos.x, this.pos.y - 10, 'wood'));
+                }
+
+                if (this.health <= 0) {
+                    this.isFelled = true;
+                    this.shake = 0;
+                    showToast("Tree felled! Press Space to pick it up.");
+                }
+            }
+
+            update() {
+                if (this.shake > 0) this.shake--;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                
+                // Shake effect
+                if (this.shake > 0) {
+                    ctx.translate(Math.random()*4-2, Math.random()*4-2);
+                }
+                
+                // Apply static lean for bent trees
+                if (this.lean !== 0 && !this.isFelled) {
+                    ctx.rotate(this.lean);
+                }
+
+                if (this.isFelled) {
+                    // Draw log on ground
+                    ctx.fillStyle = '#5d4037';
+                    ctx.fillRect(-10, -5, 60 * this.widthScale, 10); // Lying down
+                    ctx.fillStyle = '#795548';
+                    ctx.beginPath();
+                    ctx.arc(-10, 0, 5, 0, Math.PI*2);
+                    ctx.fill();
+                } else {
+                    // Shadow (Don't rotate shadow with tree)
+                    if (this.lean !== 0) ctx.rotate(-this.lean);
+                    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                    ctx.beginPath();
+                    ctx.ellipse(0, 5, 20 * this.widthScale, 10 * this.widthScale, 0, 0, Math.PI*2);
+                    ctx.fill();
+                    if (this.lean !== 0) ctx.rotate(this.lean); // Rotate back
+
+                    // Trunk
+                    ctx.fillStyle = '#5d4037';
+                    ctx.fillRect(-5 * this.widthScale, -10, 10 * this.widthScale, 20);
+
+                    // Leaves (3 triangles)
+                    // Slightly duller color for bad trees
+                    ctx.fillStyle = this.type === 'good' ? '#2d6a4f' : '#275945';
+                    
+                    const drawLayer = (yOffset, width) => {
+                        ctx.beginPath();
+                        ctx.moveTo(0, yOffset - this.height/2);
+                        ctx.lineTo(-width * this.widthScale, yOffset + 10);
+                        ctx.lineTo(width * this.widthScale, yOffset + 10);
+                        ctx.fill();
+                    };
+
+                    drawLayer(-20, 20);
+                    drawLayer(-40, 15);
+                    drawLayer(-60, 10);
+                }
+
+                ctx.restore();
+            }
+        }
+
+        class Truck {
+            constructor(x, y) {
+                this.pos = new Vector2(x, y);
+                this.angle = 0;
+                this.speed = 0;
+                this.maxSpeed = 12;
+                this.friction = 0.96;
+                this.turnSpeed = 0.05;
+                this.acceleration = 0.3;
+                this.load = 0;
+                this.maxLoad = 5;
+                this.width = 60;
+                this.length = 100;
+            }
+
+            update() {
+                // Physics updated by Player when driving
+                this.pos.x += Math.cos(this.angle) * this.speed;
+                this.pos.y += Math.sin(this.angle) * this.speed;
+                this.speed *= this.friction;
+
+                // Bounds checking
+                if (this.pos.x < 0) this.pos.x = 0;
+                if (this.pos.y < 0) this.pos.y = 0;
+                if (this.pos.x > WORLD_WIDTH) this.pos.x = WORLD_WIDTH;
+                if (this.pos.y > WORLD_HEIGHT) this.pos.y = WORLD_HEIGHT;
+
+                if (Math.abs(this.speed) > 0.1) {
+                     if (Math.random() < 0.3) {
+                         // Exhaust particles
+                         const exhaustX = this.pos.x - Math.cos(this.angle) * (this.length/2);
+                         const exhaustY = this.pos.y - Math.sin(this.angle) * (this.length/2);
+                         particles.push(new Particle(exhaustX, exhaustY, 'exhaust'));
+                     }
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.rotate(this.angle);
+
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(-this.length/2 + 5, -this.width/2 + 5, this.length, this.width);
+
+                // Body (Red Pickup)
+                ctx.fillStyle = '#c0392b';
+                ctx.fillRect(-this.length/2, -this.width/2, this.length, this.width);
+
+                // Cabin
+                ctx.fillStyle = '#922b21';
+                ctx.fillRect(10, -this.width/2 + 2, 35, this.width - 4);
+
+                // Windshield
+                ctx.fillStyle = '#85c1e9';
+                ctx.fillRect(25, -this.width/2 + 5, 15, this.width - 10);
+
+                // Bed (Ladet)
+                ctx.fillStyle = '#5d4037';
+                ctx.fillRect(-this.length/2 + 5, -this.width/2 + 5, 50, this.width - 10);
+
+                // Trees in bed
+                if (this.load > 0) {
+                    ctx.fillStyle = '#1b5e20';
+                    for(let i=0; i<this.load; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(-35 + (i*5), 0);
+                        ctx.lineTo(-45 + (i*5), -10);
+                        ctx.lineTo(-25 + (i*5), -10);
+                        ctx.fill();
+                    }
+                }
+
+                // Headlights
+                ctx.fillStyle = '#f1c40f';
+                ctx.beginPath();
+                ctx.arc(this.length/2, -15, 4, 0, Math.PI*2);
+                ctx.arc(this.length/2, 15, 4, 0, Math.PI*2);
+                ctx.fill();
+
+                // Headlight beams (only visible slightly)
+                ctx.fillStyle = 'rgba(255, 255, 200, 0.2)';
+                ctx.beginPath();
+                ctx.moveTo(this.length/2, -15);
+                ctx.lineTo(this.length/2 + 150, -60);
+                ctx.lineTo(this.length/2 + 150, 60);
+                ctx.lineTo(this.length/2, 15);
+                ctx.fill();
+
+
+                ctx.restore();
+            }
+        }
+
+        class Player {
+            constructor(x, y) {
+                this.pos = new Vector2(x, y);
+                this.speed = 4;
+                this.carrying = false;
+                this.inVehicle = false;
+                this.facing = 0;
+            }
+
+            update(trees, truck, home) {
+                if (this.inVehicle) {
+                    // Driving Logic
+                    this.pos.x = truck.pos.x;
+                    this.pos.y = truck.pos.y;
+
+                    if (isKeyPressed('w')) truck.speed += truck.acceleration;
+                    if (isKeyPressed('s')) truck.speed -= truck.acceleration;
+                    
+                    if (Math.abs(truck.speed) > 0.1) {
+                        if (isKeyPressed('a')) truck.angle -= truck.turnSpeed * Math.sign(truck.speed);
+                        if (isKeyPressed('d')) truck.angle += truck.turnSpeed * Math.sign(truck.speed);
+                    }
+
+                    if (truck.speed > truck.maxSpeed) truck.speed = truck.maxSpeed;
+                    if (truck.speed < -truck.maxSpeed/2) truck.speed = -truck.maxSpeed/2;
+
+                    // Interaction: Get out
+                    if (isKeyJustPressed(' ') && Math.abs(truck.speed) < 1) {
+                        this.inVehicle = false;
+                        this.pos.x -= 50; // Step out to the side
+                        showToast("Exited the vehicle");
+                    }
+
+                    // Check delivery at home
+                    if (home.contains(truck.pos) && truck.load > 0 && Math.abs(truck.speed) < 1) {
+                        score += truck.load;
+                        truck.load = 0;
+                        scoreEl.textContent = score + " / " + WIN_SCORE;
+                        showToast("Trees delivered! Good job!");
+                        
+                        // Check WIN CONDITION
+                        if (score >= WIN_SCORE) {
+                            triggerWin();
+                        } else {
+                            // Create victory particles
+                            for(let i=0; i<20; i++) {
+                                particles.push(new Particle(home.x + home.w/2, home.y + home.h/2, 'wood'));
+                            }
+                        }
+                    }
+
+                } else {
+                    // Walking Logic
+                    let move = new Vector2(0, 0);
+                    if (isKeyPressed('w')) move.y -= 1;
+                    if (isKeyPressed('s')) move.y += 1;
+                    if (isKeyPressed('a')) move.x -= 1;
+                    if (isKeyPressed('d')) move.x += 1;
+
+                    if (move.mag() > 0) {
+                        move = move.normalize().scale(this.carrying ? this.speed * 0.7 : this.speed);
+                        this.pos = this.pos.add(move);
+                        this.facing = Math.atan2(move.y, move.x);
+                    }
+
+                    // Interaction
+                    if (isKeyJustPressed(' ')) {
+                        // 1. Check Truck Entry/Loading
+                        if (this.pos.dist(truck.pos) < 80) {
+                            if (this.carrying) {
+                                if (truck.load < truck.maxLoad) {
+                                    truck.load++;
+                                    this.carrying = false;
+                                    showToast("Loaded tree onto truck (" + truck.load + "/" + truck.maxLoad + ")");
+                                } else {
+                                    showToast("Truck is full!");
+                                }
+                            } else {
+                                this.inVehicle = true;
+                                showToast("Driving vehicle");
+                            }
+                            return; // Action consumed
+                        }
+
+                        // 2. Check Trees (Chopping/Pickup)
+                        if (!this.carrying) {
+                            let nearestTree = null;
+                            let minDst = 50;
+                            
+                            for (let tree of trees) {
+                                let d = this.pos.dist(tree.pos);
+                                if (d < minDst) {
+                                    minDst = d;
+                                    nearestTree = tree;
+                                }
+                            }
+
+                            if (nearestTree) {
+                                if (nearestTree.isFelled) {
+                                    // Pickup
+                                    this.carrying = true;
+                                    // Remove tree from world list effectively (or just hide it)
+                                    // For simplicity, we just filter it out of the draw list logic later or splice it here
+                                    // Let's mark it 'collected'
+                                    nearestTree.collected = true; 
+                                    showToast("Picked up tree. Carry it to the truck!");
+                                } else {
+                                    // Chop
+                                    nearestTree.hit();
+                                    // Shake camera slightly
+                                    camera.x += (Math.random()-0.5)*5;
+                                    camera.y += (Math.random()-0.5)*5;
+                                }
+                            }
+                        } else {
+                            // Drop tree (if not near truck)
+                            this.carrying = false;
+                            // Spawn a felled tree at feet (Always drop a 'good' looking log, even if source was lost, but gameplay wise we only pick up good ones anyway)
+                            let droppedTree = new Tree(this.pos.x, this.pos.y, 'good');
+                            droppedTree.isFelled = true;
+                            droppedTree.health = 0;
+                            trees.push(droppedTree);
+                            showToast("Dropped the tree");
+                        }
+                    }
+                }
+                
+                // Keep player in bounds
+                if(this.pos.x < 0) this.pos.x = 0;
+                if(this.pos.y < 0) this.pos.y = 0;
+                if(this.pos.x > WORLD_WIDTH) this.pos.x = WORLD_WIDTH;
+                if(this.pos.y > WORLD_HEIGHT) this.pos.y = WORLD_HEIGHT;
+            }
+
+            draw(ctx) {
+                if (this.inVehicle) return; // Hide player
+
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.beginPath();
+                ctx.ellipse(0, 5, 10, 5, 0, 0, Math.PI*2);
+                ctx.fill();
+
+                // Body
+                ctx.fillStyle = '#d35400'; // Orange-ish jacket
+                ctx.fillRect(-8, -15, 16, 18);
+                
+                // Head
+                ctx.fillStyle = '#f1c40f'; // Yellow hat
+                ctx.beginPath();
+                ctx.arc(0, -20, 8, 0, Math.PI*2);
+                ctx.fill();
+
+                // Axe
+                if (!this.carrying) {
+                    ctx.save();
+                    ctx.translate(10, -10);
+                    if (keys[' ']) ctx.rotate(-Math.PI/2); // Swing animation frame
+                    ctx.fillStyle = '#7f8c8d';
+                    ctx.fillRect(0, -10, 4, 20); // Handle
+                    ctx.fillStyle = '#95a5a6'; 
+                    ctx.beginPath();
+                    ctx.moveTo(2, -10);
+                    ctx.lineTo(8, -15);
+                    ctx.lineTo(8, -5);
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    // Carrying tree visual
+                    ctx.fillStyle = '#2d6a4f';
+                    ctx.beginPath();
+                    ctx.moveTo(-15, -10);
+                    ctx.lineTo(15, -10);
+                    ctx.lineTo(0, -40);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // --- Setup ---
+
+        let trees = [];
+        let truck = new Truck(200, 200);
+        let player = new Player(250, 250);
+        let home = { x: 50, y: 50, w: 300, h: 300, contains: function(p) { 
+            return p.x > this.x && p.x < this.x + this.w && p.y > this.y && p.y < this.y + this.h; 
+        }};
+        let winSnow = []; // Separate snow for win window
+
+        function init() {
+            // Generate Trees
+            // First, place 20 good trees
+            // Then fill the rest with random 'bad' trees (bent or small)
+            
+            let treesCreated = 0;
+            
+            while(treesCreated < TREE_COUNT) {
+                let tx = Math.random() * (WORLD_WIDTH - 100) + 50;
+                let ty = Math.random() * (WORLD_HEIGHT - 100) + 50;
+                
+                // Don't spawn in home base
+                if (tx < 400 && ty < 400) continue; 
+                
+                let type;
+                if (treesCreated < TARGET_GOOD_TREES) {
+                    type = 'good';
+                } else {
+                    type = Math.random() > 0.5 ? 'bent' : 'small';
+                }
+                
+                trees.push(new Tree(tx, ty, type));
+                treesCreated++;
+            }
+
+            // Init snow
+            for(let i=0; i<100; i++) snowParticles.push(new SnowFlake());
+            for(let i=0; i<50; i++) winSnow.push(new SnowFlake(200, 200));
+
+            resize();
+            window.addEventListener('resize', resize);
+            loop();
+        }
+
+        function triggerWin() {
+            gameState = 'WIN';
+            winOverlay.style.display = 'block';
+            uiLayer.style.display = 'none'; // Hide controls/title
+            playJingleBells();
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // --- Main Loop ---
+
+        function loop(timestamp) {
+            requestAnimationFrame(loop);
+            const dt = timestamp - lastTime;
+            lastTime = timestamp;
+
+            if (gameState === 'PLAYING') {
+                update();
+                draw();
+            } else if (gameState === 'WIN') {
+                updateWinScene();
+                drawWinScene(timestamp);
+            }
+            
+            // Clean up inputs
+            prevKeys[' '] = keys[' '];
+        }
+
+        function update() {
+            player.update(trees, truck, home);
+            truck.update();
+
+            // Filter out collected trees
+            trees = trees.filter(t => !t.collected);
+
+            trees.forEach(t => t.update());
+            particles.forEach((p, index) => {
+                p.update();
+                if(p.life <= 0) particles.splice(index, 1);
+            });
+
+            // Camera follow logic
+            let targetX = player.inVehicle ? truck.pos.x : player.pos.x;
+            let targetY = player.inVehicle ? truck.pos.y : player.pos.y;
+
+            // Smooth camera
+            camera.x += (targetX - camera.x) * 0.1;
+            camera.y += (targetY - camera.y) * 0.1;
+
+            // Snow update with simulated camera velocity for parallax
+            let camVel = { x: (targetX - camera.x) * 0.1, y: (targetY - camera.y) * 0.1 };
+            snowParticles.forEach(s => s.update(camVel));
+        }
+
+        function draw() {
+            // Background (Snow)
+            ctx.fillStyle = '#ecf0f1';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            
+            // Center camera
+            let cx = canvas.width / 2 - camera.x;
+            let cy = canvas.height / 2 - camera.y;
+            ctx.translate(cx, cy);
+
+            // Draw Home Base Zone
+            ctx.fillStyle = 'rgba(46, 204, 113, 0.2)';
+            ctx.fillRect(home.x, home.y, home.w, home.h);
+            ctx.strokeStyle = '#27ae60';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(home.x, home.y, home.w, home.h);
+            
+            // Draw House (Simple representation)
+            ctx.fillStyle = '#c0392b'; // Walls
+            ctx.fillRect(home.x + 50, home.y + 50, 100, 80);
+            ctx.fillStyle = '#34495e'; // Roof
+            ctx.beginPath();
+            ctx.moveTo(home.x + 40, home.y + 50);
+            ctx.moveTo(home.x + 100, home.y + 10);
+            ctx.moveTo(home.x + 160, home.y + 50);
+            ctx.fill();
+            // Door
+            ctx.fillStyle = '#795548';
+            ctx.fillRect(home.x + 90, home.y + 90, 20, 40);
+            
+            // Label
+            ctx.fillStyle = '#2c3e50';
+            ctx.font = '20px Nunito';
+            ctx.fillText("HOME (Deliver here)", home.x + 50, home.y + 150);
+
+
+            // Sort objects by Y for depth (Painter's Algorithm)
+            let renderList = [];
+            renderList.push({ type: 'truck', obj: truck, y: truck.pos.y });
+            if (!player.inVehicle) renderList.push({ type: 'player', obj: player, y: player.pos.y });
+            trees.forEach(t => renderList.push({ type: 'tree', obj: t, y: t.pos.y }));
+
+            renderList.sort((a, b) => a.y - b.y);
+
+            renderList.forEach(item => {
+                item.obj.draw(ctx);
+            });
+
+            // Particles (Draw above objects)
+            particles.forEach(p => p.draw(ctx));
+
+            // World Borders
+            ctx.strokeStyle = '#bdc3c7';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(0,0, WORLD_WIDTH, WORLD_HEIGHT);
+
+            ctx.restore();
+
+            // Draw Snow (Screen Space overlay)
+            snowParticles.forEach(s => s.draw(ctx));
+        }
+        
+        // --- Win Scene Logic ---
+        function updateWinScene() {
+            // Animate fire
+            if (Math.random() < 0.2) {
+                // Fireplace is at center bottom roughly
+                fireParticles.push(new Particle(canvas.width/2 + 200, canvas.height/2 + 120, 'fire'));
+            }
+            fireParticles.forEach((p, index) => {
+                p.update();
+                if(p.life <= 0) particles.splice(index, 1);
+                // remove fire logic specific
+                p.life -= 0.02;
+                if(p.life <= 0) fireParticles.splice(index, 1);
+            });
+            
+            // Update snow in window
+            winSnow.forEach(s => s.update());
+        }
+
+        function drawWinScene(time) {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+
+            // Wall color (Warm beige)
+            ctx.fillStyle = '#f3e5ab'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Floor (Wood)
+            ctx.fillStyle = '#8d6e63';
+            ctx.fillRect(0, cy + 100, canvas.width, canvas.height - (cy+100));
+            // Floor planks
+            ctx.strokeStyle = '#6d4c41';
+            ctx.lineWidth = 2;
+            for(let i=0; i<canvas.width; i+=60) {
+                ctx.beginPath();
+                ctx.moveTo(i, cy + 100);
+                ctx.lineTo(i - 100, canvas.height);
+                ctx.stroke();
+            }
+            
+            // Rug
+            ctx.fillStyle = '#c0392b';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + 180, 200, 60, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.strokeStyle = '#e67e22';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Fireplace
+            const fpX = cx + 150;
+            const fpY = cy - 50;
+            // Chimney breast
+            ctx.fillStyle = '#d7ccc8';
+            ctx.fillRect(fpX, fpY, 100, 200);
+            // Hole
+            ctx.fillStyle = '#3e2723';
+            ctx.fillRect(fpX + 20, fpY + 120, 60, 60);
+            // Fire
+            fireParticles.forEach(p => p.draw(ctx));
+            
+            // Window (Night with snow)
+            const winX = cx - 350;
+            const winY = cy - 100;
+            ctx.fillStyle = '#1a237e'; // Night sky
+            ctx.fillRect(winX, winY, 150, 150);
+            
+            // Draw Window Snow
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(winX, winY, 150, 150);
+            ctx.clip();
+            ctx.translate(winX, winY); // Shift snow coordinate system
+            winSnow.forEach(s => s.draw(ctx));
+            ctx.restore();
+
+            // Window Frame
+            ctx.strokeStyle = '#5d4037';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(winX, winY, 150, 150);
+            ctx.beginPath();
+            ctx.moveTo(winX + 75, winY);
+            ctx.lineTo(winX + 75, winY + 150);
+            ctx.moveTo(winX, winY + 75);
+            ctx.lineTo(winX + 150, winY + 75);
+            ctx.stroke();
+
+            // --- THE TREE ---
+            ctx.save();
+            ctx.translate(cx, cy + 150);
+            const treeScale = 2.5;
+
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.beginPath();
+            ctx.ellipse(0, 10, 60, 20, 0, 0, Math.PI*2);
+            ctx.fill();
+
+            // Trunk
+            ctx.fillStyle = '#5d4037';
+            ctx.fillRect(-10, -20, 20, 40);
+
+            // Layers
+            ctx.fillStyle = '#2d6a4f';
+            const drawWinTreeLayer = (yOffset, width) => {
+                ctx.beginPath();
+                ctx.moveTo(0, yOffset - 100);
+                ctx.lineTo(-width, yOffset + 20);
+                ctx.lineTo(width, yOffset + 20);
+                ctx.fill();
+            };
+            drawWinTreeLayer(-40, 60);
+            drawWinTreeLayer(-80, 50);
+            drawWinTreeLayer(-120, 40);
+            drawWinTreeLayer(-160, 25);
+
+            // Star
+            ctx.fillStyle = '#f1c40f';
+            ctx.beginPath();
+            ctx.arc(0, -280, 15, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Lights (Blinking)
+            for(let i=0; i<15; i++) {
+                const color = ['#e74c3c', '#f1c40f', '#3498db', '#9b59b6'][i % 4];
+                ctx.fillStyle = color;
+                const blink = Math.sin(time * 0.005 + i) > 0 ? 1 : 0.3;
+                ctx.globalAlpha = blink;
+                
+                // Approximate positions on a cone
+                const lx = Math.cos(i * 3) * (i * 3);
+                const ly = -100 - (i * 10);
+                
+                ctx.beginPath();
+                ctx.arc(lx, ly, 4, 0, Math.PI*2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1.0;
+
+            // Presents
+            const drawPresent = (x, y, w, h, color) => {
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, w, h);
+                // Ribbon
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(x + w/2 - 2, y, 4, h);
+                ctx.fillRect(x, y + h/2 - 2, w, 4);
+            }
+            
+            drawPresent(-60, 0, 40, 30, '#c0392b');
+            drawPresent(30, -5, 30, 30, '#2980b9');
+            drawPresent(-10, 10, 25, 20, '#8e44ad');
+
+            ctx.restore();
+        }
+
+        // Start
+        window.onload = init;
+
+    </script>
+</body>
+</html>

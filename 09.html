@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Santa's Sleigh Dash - Level 2</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d1b2a;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none; 
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            background: linear-gradient(to bottom, #0f2027, #203a43, #2c5364); 
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+            z-index: 10;
+        }
+
+        #levelIndicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #ff9800; /* Orange for challenge level */
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+            z-index: 10;
+        }
+
+        /* Warning Message Toast */
+        #warningMsg {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 0, 0, 0.8);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            display: none;
+            z-index: 15;
+            animation: fadeInOut 2s forwards;
+            pointer-events: none;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, -20px); }
+            10% { opacity: 1; transform: translate(-50%, 0); }
+            80% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        #messageOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            color: #ff4d4d;
+            text-shadow: 2px 2px white;
+        }
+
+        p {
+            font-size: 20px;
+            margin-bottom: 30px;
+            max-width: 600px;
+            line-height: 1.5;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 24px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.2s;
+            box-shadow: 0 4px 0 #1e7e34;
+        }
+
+        button:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+        button:hover {
+            background-color: #34ce57;
+        }
+
+        /* Mobile Controls */
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 40px;
+            box-sizing: border-box;
+            pointer-events: none; 
+        }
+
+        .d-pad, .action-btn {
+            pointer-events: auto;
+            display: none; 
+        }
+
+        .btn {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white;
+            font-size: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0 10px;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .btn:active {
+            background: rgba(255, 255, 255, 0.4);
+        }
+
+        /* Powerup Indicator */
+        #powerupStatus {
+            position: absolute;
+            top: 60px;
+            left: 20px;
+            color: #ffd700;
+            font-size: 18px;
+            font-weight: bold;
+            display: none;
+            text-shadow: 1px 1px 0 #000;
+            z-index: 10;
+        }
+
+        .row {
+            display: flex;
+        }
+
+        @media (max-width: 768px) {
+            .d-pad, .action-btn {
+                display: flex;
+            }
+            h1 { font-size: 32px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <div id="ui">
+        <div>Presents: <span id="score">0</span> / <span id="total">0</span></div>
+    </div>
+    <div id="levelIndicator">Level 2 Challenge</div>
+    <div id="powerupStatus">DOUBLE JUMP ACTIVE!</div>
+    <div id="warningMsg">You forgot the present! Go back and get it!</div>
+    
+    <div id="messageOverlay">
+        <h1 id="msgTitle">Santa's Level 2 Challenge</h1>
+        <p id="msgText">
+            The present is stuck high up on a ledge!<br>
+            1. Find the <b>Double Jump Coin</b> at the far right.<br>
+            2. Run BACK to get the present.<br>
+            3. Return to the chimney to deliver it!
+        </p>
+        <button id="startBtn">Start Challenge</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="controls">
+        <div class="d-pad row">
+            <div class="btn" id="btnLeft">←</div>
+            <div class="btn" id="btnRight">→</div>
+        </div>
+        <div class="action-btn">
+            <div class="btn" id="btnJump">↑</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Configuration ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Assets
+    const coinImg = new Image();
+    coinImg.src = "https://yt3.googleusercontent.com/-DYvc9ZksLMneBQhjqIi2Uaz0GmlM-PbiE-QjKL_tj_OPXftAHmxRCuhnHIxtDbNwEiJr0MsHyk=s900-c-k-c0x00ffffff-no-rj";
+
+    // Physics Constants
+    const GRAVITY = 0.6;
+    const FRICTION = 0.8;
+    const SPEED = 5;
+    const JUMP_FORCE = -14;
+    const TILE_SIZE = 40;
+
+    // Game State
+    let animationFrameId;
+    let lastTime = 0;
+    let accumulator = 0;
+    let cameraX = 0;
+    let score = 0;
+    let totalPresents = 0;
+    let gameActive = false;
+    let isEnding = false;
+    let isTransitioning = false;
+    let won = false;
+    let warningTimeout = null;
+
+    // Input State
+    const keys = {
+        left: false,
+        right: false,
+        up: false,
+        jumpPressed: false
+    };
+
+    // --- Level Plan (Level 2 Hard Mode) ---
+    // Added more intermediate platforms to fix the 7-dot gaps that were impossible with single jump.
+    // Widened ground platforms.
+    
+    const levelPlan = [
+        "........................................................................................................................",
+        "........................................................................................................................",
+        "........................................................................................................................",
+        "........................................................................................................................",
+        "...P....................................................................................................................",
+        ".====............................................................................................=====..................",
+        "...............................................................................................................H........",
+        "................................................................................................................#######.....",
+        ".........................................................===.....===.....===.......===..........................#.....#.....",
+        "....................................===.......===...............................................C...........#.....#.....",
+        ".....................===......................................................................=====.........#.....#.....",
+        "...........^................................................................................^...............#.......#.....#.....",
+        ".S.......#####...............#####.............#####......#####...................#####.....#...............#######.....",
+        "####...........#####....####.......####...####.......####......####.....######.............###..........................",
+        "........................................................................................................................"
+    ];
+
+    let tiles = [];
+    let presents = [];
+    let spikes = [];
+    let particles = [];
+    let flyingPresents = [];
+    let powerup = null;
+    let exitZone = null; 
+
+    // --- Entity Classes ---
+
+    class Player {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.width = 30;
+            this.height = 38; 
+            this.vx = 0;
+            this.vy = 0;
+            this.grounded = false;
+            this.facingRight = true;
+            this.animTimer = 0;
+            
+            // Double Jump Logic
+            this.maxJumps = 1;
+            this.jumpCount = 0;
+        }
+
+        update() {
+            // Horizontal Movement
+            if (keys.left) {
+                this.vx = -SPEED;
+                this.facingRight = false;
+            } else if (keys.right) {
+                this.vx = SPEED;
+                this.facingRight = true;
+            } else {
+                this.vx *= FRICTION;
+            }
+
+            // Jump Handling
+            if (keys.jumpPressed) {
+                if (this.grounded) {
+                    this.vy = JUMP_FORCE;
+                    this.grounded = false;
+                    this.jumpCount = 1;
+                } else if (this.jumpCount < this.maxJumps) {
+                    this.vy = JUMP_FORCE;
+                    this.jumpCount++;
+                }
+                keys.jumpPressed = false; 
+            }
+
+            // Gravity
+            this.vy += GRAVITY;
+
+            // Apply Velocity
+            this.x += this.vx;
+            this.handleHorizontalCollisions();
+            this.y += this.vy;
+            this.handleVerticalCollisions();
+
+            // Screen bounds
+            if (this.y > canvas.height + 100) {
+                gameOver(false);
+            }
+
+            // Animation timer
+            if (Math.abs(this.vx) > 0.5) this.animTimer += 0.2;
+        }
+
+        handleHorizontalCollisions() {
+            for (let tile of tiles) {
+                if (rectIntersect(this.x, this.y, this.width, this.height, tile.x, tile.y, TILE_SIZE, TILE_SIZE)) {
+                    if (this.vx > 0) {
+                        this.x = tile.x - this.width;
+                    } else if (this.vx < 0) {
+                        this.x = tile.x + TILE_SIZE;
+                    }
+                    this.vx = 0;
+                }
+            }
+        }
+
+        handleVerticalCollisions() {
+            this.grounded = false;
+            for (let tile of tiles) {
+                if (rectIntersect(this.x, this.y, this.width, this.height, tile.x, tile.y, TILE_SIZE, TILE_SIZE)) {
+                    if (this.vy > 0) {
+                        this.y = tile.y - this.height;
+                        this.grounded = true;
+                        this.vy = 0;
+                        this.jumpCount = 0;
+                    } else if (this.vy < 0) {
+                        this.y = tile.y + TILE_SIZE;
+                        this.vy = 0;
+                    }
+                }
+            }
+        }
+
+        draw(ctx, camX) {
+            const drawX = Math.round(this.x - camX);
+            const drawY = Math.round(this.y);
+            
+            // Santa Body
+            ctx.fillStyle = '#d32f2f';
+            ctx.fillRect(drawX, drawY + 10, this.width, this.height - 10);
+
+            // Trim
+            ctx.fillStyle = 'white';
+            ctx.fillRect(drawX + 12, drawY + 10, 6, this.height - 10);
+            
+            // Belt
+            ctx.fillStyle = 'black';
+            ctx.fillRect(drawX, drawY + 24, this.width, 4);
+            ctx.fillStyle = 'gold';
+            ctx.fillRect(drawX + 10, drawY + 23, 10, 6);
+
+            // Face
+            ctx.fillStyle = '#ffccb3';
+            ctx.fillRect(drawX + 4, drawY + 4, 22, 14);
+
+            // Beard
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.moveTo(drawX + 2, drawY + 12);
+            ctx.lineTo(drawX + 28, drawY + 12);
+            ctx.lineTo(drawX + 15, drawY + 24);
+            ctx.fill();
+
+            // Hat
+            ctx.fillStyle = '#d32f2f';
+            ctx.beginPath();
+            ctx.moveTo(drawX, drawY + 5);
+            ctx.lineTo(drawX + 30, drawY + 5);
+            ctx.lineTo(drawX + 25, drawY - 8); 
+            ctx.lineTo(drawX + 10, drawY - 2);
+            ctx.fill();
+            
+            // Pom pom
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(drawX + 25, drawY - 8, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eyes
+            ctx.fillStyle = 'black';
+            if (this.facingRight) {
+                ctx.fillRect(drawX + 18, drawY + 8, 2, 2);
+            } else {
+                ctx.fillRect(drawX + 10, drawY + 8, 2, 2);
+            }
+        }
+    }
+
+    // --- Flying Present Class ---
+    class FlyingPresent {
+        constructor(startX, startY, targetX, targetY, delay) {
+            this.x = startX;
+            this.y = startY;
+            this.targetX = targetX;
+            this.targetY = targetY;
+            this.w = 20;
+            this.h = 20;
+            this.speed = 0;
+            this.delay = delay;
+            this.arrived = false;
+        }
+
+        update() {
+            if (this.delay > 0) {
+                this.delay--;
+                return;
+            }
+
+            const dx = this.targetX - this.x;
+            const dy = this.targetY - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist < 10) {
+                this.arrived = true;
+                return;
+            }
+
+            this.speed += 0.5;
+            const angle = Math.atan2(dy, dx);
+            this.x += Math.cos(angle) * this.speed;
+            this.y += Math.sin(angle) * this.speed;
+        }
+
+        draw(ctx) {
+            if (this.delay > 0 || this.arrived) return;
+            
+            ctx.save();
+            ctx.translate(this.x + 10, this.y + 10);
+            ctx.rotate(this.speed * 0.1); 
+            
+            ctx.fillStyle = '#4caf50';
+            ctx.fillRect(-10, -10, 20, 20); // Center box
+            ctx.fillStyle = '#f44336';
+            ctx.fillRect(-2, -10, 4, 20);
+            ctx.fillRect(-10, -2, 20, 4);
+            
+            ctx.restore();
+        }
+    }
+
+    let player;
+
+    // --- Helpers ---
+
+    function rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
+        return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1;
+    }
+
+    function createSnowParticles() {
+        if (particles.length < 100) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: 0,
+                r: Math.random() * 3 + 1,
+                speed: Math.random() * 2 + 1
+            });
+        }
+    }
+
+    function updateParticles() {
+        for (let i = 0; i < particles.length; i++) {
+            let p = particles[i];
+            p.y += p.speed;
+            p.x += Math.sin(p.y * 0.01) * 0.5; 
+            if (p.y > canvas.height) {
+                particles[i].y = 0;
+                particles[i].x = Math.random() * canvas.width;
+            }
+        }
+    }
+
+    function drawParticles(ctx) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        for (let p of particles) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // --- Core Game Functions ---
+
+    function initGame() {
+        tiles = [];
+        presents = [];
+        spikes = [];
+        flyingPresents = [];
+        score = 0;
+        powerup = null;
+        exitZone = null;
+        
+        document.getElementById('powerupStatus').style.display = 'none';
+
+        const plan = levelPlan;
+        
+        for (let y = 0; y < plan.length; y++) {
+            let row = plan[y];
+            for (let x = 0; x < row.length; x++) {
+                let char = row[x];
+                let posX = x * TILE_SIZE;
+                let posY = y * TILE_SIZE;
+
+                if (char === '#') {
+                    tiles.push({ x: posX, y: posY, type: 'snow' });
+                } else if (char === '=') {
+                    tiles.push({ x: posX, y: posY, type: 'ice' });
+                } else if (char === 'P') {
+                    presents.push({ x: posX + 10, y: posY + 10, w: 20, h: 20, active: true });
+                } else if (char === 'C') {
+                    powerup = { x: posX, y: posY, w: 40, h: 40, active: true };
+                } else if (char === 'S') {
+                    player = new Player(posX, posY);
+                } else if (char === 'H') {
+                    exitZone = { x: posX, y: posY, w: 60, h: 80, type: 'chimney' };
+                } else if (char === '^') {
+                    spikes.push({ x: posX, y: posY + 20, w: TILE_SIZE, h: 20 });
+                }
+            }
+        }
+
+        totalPresents = presents.length;
+        document.getElementById('total').innerText = totalPresents;
+        document.getElementById('score').innerText = score;
+        
+        gameActive = true;
+        isEnding = false;
+        isTransitioning = false;
+        won = false;
+        
+        // Reset timing
+        lastTime = performance.now();
+        accumulator = 0;
+        
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(loop);
+    }
+
+    function showWarning() {
+        const msg = document.getElementById('warningMsg');
+        msg.style.display = 'block';
+        
+        // Reset animation
+        msg.style.animation = 'none';
+        msg.offsetHeight; /* trigger reflow */
+        msg.style.animation = null; 
+
+        if(warningTimeout) clearTimeout(warningTimeout);
+        warningTimeout = setTimeout(() => {
+            msg.style.display = 'none';
+        }, 2000);
+    }
+
+    function startEndingSequence() {
+        if(isEnding) return;
+        isEnding = true;
+        
+        let targetX = exitZone.x + exitZone.w / 2;
+        let targetY = exitZone.y; // Top of chimney
+
+        // Spawn flying presents from player position
+        for (let i = 0; i < score; i++) {
+            flyingPresents.push(new FlyingPresent(
+                player.x, 
+                player.y, 
+                targetX + (Math.random() * 20 - 10), 
+                targetY, 
+                i * 8 
+            ));
+        }
+    }
+    
+    function finishLevel() {
+         gameOver(true);
+    }
+
+    function update() {
+        if (!gameActive) return;
+
+        if (!isEnding) {
+            player.update();
+        } else {
+            // Ending Animation Logic
+            let allArrived = true;
+            for(let fp of flyingPresents) {
+                fp.update();
+                if(!fp.arrived) allArrived = false;
+            }
+            
+            if(allArrived && flyingPresents.length > 0 && !isTransitioning) {
+                 isTransitioning = true;
+                 setTimeout(() => finishLevel(), 800); 
+            }
+        }
+
+        // Camera follow
+        let targetCamX = player.x - canvas.width / 2 + player.width / 2;
+        targetCamX = Math.max(0, targetCamX); 
+        targetCamX = Math.min(targetCamX, levelPlan[0].length * TILE_SIZE - canvas.width); 
+        cameraX += (targetCamX - cameraX) * 0.1;
+
+        if (!isEnding) {
+            // Check Present Collection
+            for (let p of presents) {
+                if (p.active && rectIntersect(player.x, player.y, player.width, player.height, p.x, p.y, p.w, p.h)) {
+                    p.active = false;
+                    score++;
+                    document.getElementById('score').innerText = score;
+                }
+            }
+
+            // Check Powerup
+            if (powerup && powerup.active && rectIntersect(player.x, player.y, player.width, player.height, powerup.x, powerup.y, powerup.w, powerup.h)) {
+                powerup.active = false;
+                player.maxJumps = 2;
+                document.getElementById('powerupStatus').style.display = 'block';
+            }
+
+            // Check Spikes
+            for (let s of spikes) {
+                if (rectIntersect(player.x + 5, player.y + 5, player.width - 10, player.height - 10, s.x + 5, s.y, s.w - 10, s.h)) {
+                    gameOver(false);
+                }
+            }
+
+            // Check Exit Condition
+            if (exitZone && rectIntersect(player.x, player.y, player.width, player.height, exitZone.x, exitZone.y, exitZone.w, exitZone.h)) {
+                if (score >= totalPresents) {
+                    startEndingSequence();
+                } else {
+                    showWarning();
+                }
+            }
+        }
+
+        createSnowParticles();
+        updateParticles();
+    }
+
+    function drawExitZone(ctx, x, y) {
+        // Draw Realistic Chimney
+        const w = 60;
+        const h = 80;
+        
+        ctx.save();
+        
+        // 1. Shadow/Depth behind
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetX = 5;
+        ctx.shadowOffsetY = 5;
+
+        // 2. Chimney Body Gradient (Red Brick)
+        const grad = ctx.createLinearGradient(x, y, x + w, y);
+        grad.addColorStop(0, '#5d4037'); // Darker left
+        grad.addColorStop(0.5, '#795548'); // Lighter center
+        grad.addColorStop(1, '#5d4037'); // Darker right
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, y, w, h);
+        
+        // Remove shadow for bricks
+        ctx.shadowColor = 'transparent';
+
+        // 3. Bricks Texture
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        for(let by=0; by<h; by+=16) {
+            for(let bx=0; bx<w; bx+=20) {
+               // Offset every other row
+               let shift = ((by/16)%2===0) ? 0 : 10;
+               if (x + bx + shift + 18 < x + w) {
+                   ctx.fillRect(x + bx + shift, y + by, 2, 14); // Vertical grout
+                   ctx.fillRect(x, y + by + 14, w, 2); // Horizontal grout
+               }
+            }
+        }
+
+        // 4. Top Rim (Snowy & 3D)
+        // Rim body
+        ctx.fillStyle = '#8d6e63';
+        ctx.fillRect(x - 5, y - 5, w + 10, 15);
+        
+        // Snow Cap
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(x - 8, y - 5);
+        ctx.lineTo(x + w + 8, y - 5);
+        // Drip effect
+        ctx.bezierCurveTo(x + w + 10, y + 5, x + w + 5, y + 15, x + w, y + 5);
+        ctx.lineTo(x + w - 10, y + 5);
+        ctx.bezierCurveTo(x + w - 15, y + 12, x + w - 20, y + 12, x + w - 25, y + 5);
+        ctx.lineTo(x + 25, y + 5);
+        ctx.bezierCurveTo(x + 20, y + 15, x + 15, y + 15, x + 10, y + 5);
+        ctx.lineTo(x, y + 5);
+        ctx.bezierCurveTo(x - 5, y + 10, x - 10, y + 5, x - 8, y - 5);
+        ctx.fill();
+
+        // 5. The Hole (Black/Dark)
+        ctx.fillStyle = '#212121'; 
+        ctx.beginPath();
+        ctx.ellipse(x + w/2, y, w/2 - 5, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawParticles(ctx);
+
+        ctx.save();
+        ctx.translate(-Math.round(cameraX), 0);
+
+        if (exitZone) {
+            drawExitZone(ctx, exitZone.x, exitZone.y);
+        }
+
+        // Draw Tiles
+        for (let t of tiles) {
+            if (t.x + TILE_SIZE < cameraX || t.x > cameraX + canvas.width) continue;
+
+            if (t.type === 'snow') {
+                ctx.fillStyle = '#e1f5fe';
+                ctx.fillRect(t.x, t.y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#b3e5fc';
+                ctx.fillRect(t.x, t.y + TILE_SIZE - 5, TILE_SIZE, 5);
+                ctx.fillStyle = 'white';
+                ctx.fillRect(t.x, t.y, TILE_SIZE, 10);
+            } else if (t.type === 'ice') {
+                ctx.fillStyle = '#81d4fa';
+                ctx.fillRect(t.x, t.y, TILE_SIZE, TILE_SIZE / 2);
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(t.x, t.y, TILE_SIZE, TILE_SIZE / 2);
+            }
+        }
+
+        // Draw Spikes
+        for (let s of spikes) {
+             if (s.x + s.w < cameraX || s.x > cameraX + canvas.width) continue;
+             ctx.fillStyle = '#cfd8dc';
+             ctx.beginPath();
+             ctx.moveTo(s.x, s.y + s.h);
+             ctx.lineTo(s.x + s.w / 2, s.y);
+             ctx.lineTo(s.x + s.w, s.y + s.h);
+             ctx.fill();
+        }
+
+        // Draw Collectible Presents
+        for (let p of presents) {
+            if (!p.active) continue;
+            if (p.x + p.w < cameraX || p.x > cameraX + canvas.width) continue;
+            ctx.fillStyle = '#4caf50';
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.fillStyle = '#f44336';
+            ctx.fillRect(p.x + p.w/2 - 2, p.y, 4, p.h);
+            ctx.fillRect(p.x, p.y + p.h/2 - 2, p.w, 4);
+        }
+
+        // Draw Coin
+        if (powerup && powerup.active) {
+            if (coinImg.complete) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(powerup.x + 20, powerup.y + 20, 20, 0, Math.PI*2);
+                ctx.clip();
+                ctx.drawImage(coinImg, powerup.x, powerup.y, 40, 40);
+                ctx.restore();
+                
+                ctx.strokeStyle = '#ffd700';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(powerup.x + 20, powerup.y + 20, 20, 0, Math.PI*2);
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = 'gold';
+                ctx.beginPath();
+                ctx.arc(powerup.x + 20, powerup.y + 20, 15, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = 'black';
+                ctx.font = '20px Arial';
+                ctx.fillText('2x', powerup.x + 10, powerup.y + 27);
+            }
+        }
+        
+        // Draw Flying Presents (Animation)
+        for(let fp of flyingPresents) {
+            fp.draw(ctx);
+        }
+
+        player.draw(ctx, 0);
+
+        ctx.restore();
+    }
+
+    function loop(timestamp) {
+        if (!timestamp) timestamp = performance.now();
+        let deltaTime = timestamp - lastTime;
+        lastTime = timestamp;
+        if (deltaTime > 100) deltaTime = 100;
+
+        accumulator += deltaTime;
+        const TIME_STEP = 1000 / 60;
+
+        while (accumulator >= TIME_STEP) {
+            update();
+            accumulator -= TIME_STEP;
+        }
+
+        draw();
+        animationFrameId = requestAnimationFrame(loop);
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+
+    function gameOver(isWin) {
+        gameActive = false;
+        won = isWin;
+        const overlay = document.getElementById('messageOverlay');
+        const title = document.getElementById('msgTitle');
+        const text = document.getElementById('msgText');
+        const btn = document.getElementById('startBtn');
+
+        overlay.classList.remove('hidden');
+
+        btn.onclick = () => {
+             document.getElementById('messageOverlay').classList.add('hidden');
+             initGame();
+        };
+        btn.innerText = isWin ? "Play Again" : "Try Again";
+
+        if (isWin) {
+            title.innerText = "Challenge Complete!";
+            title.style.color = "#4caf50";
+            text.innerText = "Fantastic! You retrieved the present and delivered it safely!";
+        } else {
+            title.innerText = "Oh no!";
+            title.style.color = "#ff4d4d";
+            text.innerText = "Santa got stuck! Try the challenge again.";
+        }
+    }
+
+    // --- Input Handling ---
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+        if ((e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space')) {
+            keys.up = true;
+            if(!e.repeat) keys.jumpPressed = true; 
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+        if (e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space') {
+            keys.up = false;
+        }
+    });
+
+    const btnLeft = document.getElementById('btnLeft');
+    const btnRight = document.getElementById('btnRight');
+    const btnJump = document.getElementById('btnJump');
+
+    const handleTouch = (btn, key, isJumpBtn) => {
+        const startHandler = (e) => {
+            e.preventDefault();
+            keys[key] = true;
+            if(isJumpBtn) keys.jumpPressed = true;
+            btn.style.backgroundColor = 'rgba(255,255,255,0.4)';
+        };
+        const endHandler = (e) => {
+            e.preventDefault();
+            keys[key] = false;
+            btn.style.backgroundColor = 'rgba(255,255,255,0.2)';
+        };
+        
+        btn.addEventListener('touchstart', startHandler);
+        btn.addEventListener('touchend', endHandler);
+        btn.addEventListener('mousedown', startHandler);
+        btn.addEventListener('mouseup', endHandler);
+    };
+
+    handleTouch(btnLeft, 'left', false);
+    handleTouch(btnRight, 'right', false);
+    handleTouch(btnJump, 'up', true);
+
+    document.getElementById('startBtn').addEventListener('click', () => {
+        document.getElementById('messageOverlay').classList.add('hidden');
+        initGame();
+    });
+
+    window.addEventListener('resize', resize);
+    
+    resize();
+    createSnowParticles(); 
+    setInterval(() => {
+        if(!gameActive) { 
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            updateParticles();
+            drawParticles(ctx);
+        }
+    }, 1000/60);
+
+</script>
+</body>
+</html>

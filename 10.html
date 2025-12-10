@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stamp the Letter to Santa</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #090a0f;
+            background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
+            overflow: hidden;
+            touch-action: none;
+            color: #fff;
+        }
+
+        /* Magical Star Background with Movement */
+        .stars {
+            position: fixed;
+            top: 0; left: 0; width: 200%; height: 200%;
+            pointer-events: none;
+            background-image: 
+                radial-gradient(2px 2px at 20px 30px, #eee, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 40px 70px, #fff, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 50px 160px, #ddd, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 90px 40px, #fff, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 130px 80px, #fff, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 160px 120px, #ddd, rgba(0,0,0,0));
+            background-repeat: repeat;
+            background-size: 200px 200px;
+            animation: twinkle 4s infinite, spaceDrift 100s linear infinite;
+            opacity: 0.8;
+            z-index: -1;
+        }
+        
+        @keyframes twinkle {
+            0% { opacity: 0.8; }
+            50% { opacity: 0.5; }
+            100% { opacity: 0.8; }
+        }
+
+        @keyframes spaceDrift {
+            from { transform: translate(0, 0); }
+            to { transform: translate(-10%, -10%); }
+        }
+
+        /* Floating Envelope Animation */
+        @keyframes float {
+            0% { transform: translateY(0px) rotate(1deg); }
+            50% { transform: translateY(-20px) rotate(2deg); }
+            100% { transform: translateY(0px) rotate(1deg); }
+        }
+
+        /* Fly Away Animation for Success */
+        @keyframes flyAway {
+            0% { transform: translateY(0px) scale(1) rotate(1deg); opacity: 1; }
+            20% { transform: translateY(20px) scale(1.05) rotate(-2deg); opacity: 1; } /* Anticipation dip */
+            100% { transform: translateY(-150vh) translateX(100px) scale(0.5) rotate(10deg); opacity: 0; }
+        }
+
+        .floating {
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .fly-away {
+            animation: flyAway 1.5s cubic-bezier(0.55, 0.055, 0.675, 0.19) forwards !important;
+        }
+
+        .handwritten { font-family: 'Great Vibes', cursive; }
+        .vintage-font { font-family: 'IM Fell English', serif; }
+
+        .envelope-paper {
+            background-color: #fdfbf7;
+            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E");
+            box-shadow: 
+                0 0 50px rgba(255, 255, 255, 0.1), 
+                0 10px 15px -3px rgba(0, 0, 0, 0.5), 
+                inset 0 0 40px rgba(169, 146, 125, 0.1);
+            transform-style: preserve-3d; 
+        }
+
+        /* Wish List Paper Styling */
+        .paper-sheet {
+            background-color: #fff;
+            /* Lined paper pattern */
+            background-image: repeating-linear-gradient(transparent, transparent 31px, #a8c6fa 31px, #a8c6fa 32px);
+            background-attachment: local;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Red margin line */
+        .paper-sheet::before {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0; left: 3rem;
+            width: 2px;
+            background-color: #ea868f;
+            z-index: 10;
+        }
+
+        .wish-textarea {
+            line-height: 32px; /* Matches background lines */
+            padding-top: 5px; /* Aligns text to lines */
+        }
+
+        /* Classes for hiding/showing phases */
+        .phase-hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.8) translateY(20px);
+            transition: all 0.8s ease-in-out;
+        }
+
+        .phase-visible {
+            opacity: 1;
+            pointer-events: auto;
+            transform: scale(1) translateY(0);
+            transition: all 0.8s ease-in-out;
+        }
+
+        .stamp-container {
+            width: 110px;
+            height: auto;
+            filter: drop-shadow(4px 4px 6px rgba(0,0,0,0.6));
+            cursor: grab;
+            transition: transform 0.1s, opacity 0.5s;
+            position: absolute;
+            z-index: 50;
+        }
+
+        .stamp-container:active {
+            cursor: grabbing;
+            transform: scale(1.05);
+        }
+        
+        .stamp-attached {
+            position: absolute !important;
+            z-index: 10 !important; 
+            cursor: default !important;
+            filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.3)) !important;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        .stamp-image {
+            width: 100%;
+            height: auto;
+            display: block;
+            pointer-events: none;
+        }
+
+        .postmark {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 140px;
+            height: 100px;
+            pointer-events: none;
+            opacity: 0;
+            transform: scale(1.5) rotate(-10deg);
+            transition: opacity 0.3s ease-in, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 20;
+            mix-blend-mode: multiply;
+        }
+
+        .postmark.stamped {
+            opacity: 0.85;
+            transform: scale(1) rotate(-10deg);
+        }
+
+        .success-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            z-index: 100;
+        }
+        .success-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center text-gray-800 select-none overflow-hidden">
+
+    <div class="stars"></div>
+
+    <!-- Instructions -->
+    <div id="instructions" class="absolute top-8 text-white text-center opacity-90 transition-all duration-500 z-10">
+        <p id="instruction-title" class="text-2xl font-bold mb-1 tracking-wider" style="text-shadow: 0 2px 4px rgba(0,0,0,0.8);">Make a Wish</p>
+        <p id="instruction-sub" class="text-sm font-light">Type your wish to Santa below.</p>
+    </div>
+
+    <!-- PHASE 1: Wish List -->
+    <div id="wishlist-phase" class="absolute inset-0 flex flex-col items-center justify-center z-40 phase-visible">
+        <div class="paper-sheet relative w-[85%] max-w-lg h-[60vh] md:h-[70vh] rounded-sm transform rotate-1 flex flex-col">
+            <!-- Header on paper -->
+            <div class="pt-6 px-16 pb-2 border-b border-transparent">
+                <h2 class="handwritten text-4xl text-gray-800 text-left">Dear Santa,</h2>
+            </div>
+            
+            <!-- Text Input area -->
+            <div class="flex-grow relative px-16 py-0 overflow-hidden">
+                <textarea 
+                    id="wish-input" 
+                    class="wish-textarea w-full h-full bg-transparent resize-none outline-none border-none handwritten text-2xl md:text-3xl text-gray-700 z-20 relative" 
+                    placeholder="Write your wish here"></textarea>
+            </div>
+        </div>
+
+        <button onclick="transitionToStamping()" class="mt-8 bg-green-700 hover:bg-green-800 text-white font-bold py-3 px-8 rounded-full shadow-lg transform hover:scale-105 transition z-50 vintage-font text-xl border-2 border-green-600">
+            Put in Envelope
+        </button>
+    </div>
+
+    <!-- PHASE 2: Envelope & Stamping -->
+    <div id="stamping-phase" class="relative w-full h-full flex items-center justify-center phase-hidden">
+        
+        <div id="game-area" class="relative w-full max-w-2xl aspect-[1.4/1] flex items-center justify-center">
+            
+            <!-- The Envelope -->
+            <div id="envelope" class="relative w-[90%] h-[80%] envelope-paper rounded-sm floating">
+                
+                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-2/3 text-center pointer-events-none">
+                    <p class="handwritten text-5xl md:text-7xl text-gray-800 leading-tight mb-2">Santa Claus</p>
+                    <p class="handwritten text-3xl md:text-4xl text-gray-600">1 Elf Road</p>
+                    <p class="handwritten text-3xl md:text-4xl text-gray-600">North Pole, 88888</p>
+                </div>
+
+                <div id="postmark" class="postmark text-gray-800">
+                    <svg viewBox="0 0 200 100" class="w-full h-full">
+                        <path d="M10,20 Q50,5 90,20 T170,20" fill="none" stroke="#2d3748" stroke-width="3" opacity="0.8" />
+                        <path d="M10,35 Q50,20 90,35 T170,35" fill="none" stroke="#2d3748" stroke-width="3" opacity="0.8" />
+                        <path d="M10,50 Q50,35 90,50 T170,50" fill="none" stroke="#2d3748" stroke-width="3" opacity="0.8" />
+                        <circle cx="150" cy="50" r="40" fill="none" stroke="#2d3748" stroke-width="3" opacity="0.8" />
+                        <text x="150" y="45" font-family="Arial" font-size="10" text-anchor="middle" font-weight="bold" fill="#2d3748">NORTH POLE</text>
+                        <text x="150" y="65" font-family="Arial" font-size="12" text-anchor="middle" fill="#2d3748">DEC 25</text>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- The Stamp -->
+            <div id="stamp" class="stamp-container" style="top: 80%; left: 10%;">
+                <img 
+                    src="https://cdn.creazilla.com/cliparts/7766279/christmas-tree-postage-stamp-clipart-original.png" 
+                    alt="Christmas Tree Stamp" 
+                    class="stamp-image"
+                >
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Win Modal -->
+    <div id="success-overlay" class="success-overlay">
+        <div class="bg-white p-8 rounded-lg shadow-2xl text-center transform scale-110">
+            <h2 class="vintage-font text-4xl text-green-700 mb-2">Sent to North Pole!</h2>
+            <p class="text-gray-600 mb-6">Santa will receive your letter shortly.</p>
+            <button onclick="resetGame()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full transition shadow-lg flex items-center justify-center mx-auto gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Send Another
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const stamp = document.getElementById('stamp');
+        const envelope = document.getElementById('envelope');
+        const postmark = document.getElementById('postmark');
+        const successOverlay = document.getElementById('success-overlay');
+        const instructionTitle = document.getElementById('instruction-title');
+        const instructionSub = document.getElementById('instruction-sub');
+        const gameArea = document.getElementById('game-area');
+        
+        const wishlistPhase = document.getElementById('wishlist-phase');
+        const stampingPhase = document.getElementById('stamping-phase');
+        const wishInput = document.getElementById('wish-input');
+
+        let isDragging = false;
+        let startX, startY;
+        let isSuccess = false;
+        let currentPhase = 'wishlist'; // 'wishlist' or 'stamping'
+
+        const originalParent = stamp.parentElement;
+        const initialStampPos = { top: '80%', left: '10%' };
+
+        // --- Phase Management ---
+
+        function transitionToStamping() {
+            // Visual transition
+            wishlistPhase.classList.remove('phase-visible');
+            wishlistPhase.classList.add('phase-hidden');
+
+            setTimeout(() => {
+                stampingPhase.classList.remove('phase-hidden');
+                stampingPhase.classList.add('phase-visible');
+                
+                // Update text
+                instructionTitle.innerText = "Send the Letter";
+                instructionSub.innerText = "Drag the stamp to the top right corner.";
+                
+                currentPhase = 'stamping';
+            }, 600);
+        }
+
+        function resetGame() {
+            isSuccess = false;
+            successOverlay.classList.remove('visible');
+            postmark.classList.remove('stamped');
+            
+            // Reset Envelope
+            envelope.classList.remove('fly-away');
+            envelope.classList.add('floating');
+
+            // Reset Stamp
+            originalParent.appendChild(stamp);
+            stamp.classList.remove('stamp-attached');
+            stamp.style.right = 'auto'; 
+            stamp.style.transform = 'scale(1) rotate(0deg)';
+            
+            // Reset position
+            returnToStart();
+
+            // Go back to wishlist
+            setTimeout(() => {
+                stampingPhase.classList.remove('phase-visible');
+                stampingPhase.classList.add('phase-hidden');
+                
+                wishInput.value = ""; // Clear wish
+                
+                setTimeout(() => {
+                    wishlistPhase.classList.remove('phase-hidden');
+                    wishlistPhase.classList.add('phase-visible');
+                    
+                    instructionTitle.innerText = "Make a Wish";
+                    instructionSub.innerText = "Type your wish to Santa below.";
+                    currentPhase = 'wishlist';
+                }, 600);
+            }, 500);
+        }
+
+
+        // --- Stamping Mechanics ---
+
+        stamp.addEventListener('mousedown', startDrag);
+        stamp.addEventListener('touchstart', startDrag, { passive: false });
+
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('touchmove', drag, { passive: false });
+
+        document.addEventListener('mouseup', endDrag);
+        document.addEventListener('touchend', endDrag);
+
+        function startDrag(e) {
+            if (currentPhase !== 'stamping') return;
+            if (isSuccess) return;
+
+            isDragging = true;
+            
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+
+            const rect = stamp.getBoundingClientRect();
+            startX = clientX - rect.left;
+            startY = clientY - rect.top;
+
+            stamp.style.zIndex = 100;
+            stamp.style.transform = 'scale(1.1) rotate(5deg)';
+            
+            // Temporary hide instructions while dragging for cleaner view
+            document.getElementById('instructions').style.opacity = '0.5';
+        }
+
+        function drag(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+
+            const gameAreaRect = gameArea.getBoundingClientRect();
+            
+            let newLeft = clientX - gameAreaRect.left - startX;
+            let newTop = clientY - gameAreaRect.top - startY;
+
+            stamp.style.left = newLeft + 'px';
+            stamp.style.top = newTop + 'px';
+        }
+
+        function endDrag(e) {
+            if (!isDragging) return;
+            isDragging = false;
+            stamp.style.zIndex = 50;
+            stamp.style.transform = 'scale(1) rotate(0deg)';
+            document.getElementById('instructions').style.opacity = '0.9';
+
+            checkDropZone();
+        }
+
+        function checkDropZone() {
+            const envelopeRect = envelope.getBoundingClientRect();
+            const stampRect = stamp.getBoundingClientRect();
+
+            const stampCenterX = stampRect.left + stampRect.width / 2;
+            const stampCenterY = stampRect.top + stampRect.height / 2;
+
+            const zoneLeft = envelopeRect.right - (envelopeRect.width * 0.4); 
+            const zoneBottom = envelopeRect.top + (envelopeRect.height * 0.45); 
+
+            const isInsideHorizontal = stampCenterX > zoneLeft && stampCenterX < envelopeRect.right;
+            const isInsideVertical = stampCenterY > envelopeRect.top && stampCenterY < zoneBottom;
+
+            if (isInsideHorizontal && isInsideVertical) {
+                triggerWin();
+            } else {
+                returnToStart();
+            }
+        }
+
+        function triggerWin() {
+            isSuccess = true;
+            
+            envelope.appendChild(stamp);
+            
+            stamp.style.left = 'auto';
+            stamp.style.right = '25px';
+            stamp.style.top = '25px';
+            stamp.classList.add('stamp-attached');
+            
+            const randomAngle = (Math.random() * 6) - 3;
+            stamp.style.transform = `rotate(${randomAngle}deg)`;
+
+            setTimeout(() => {
+                postmark.classList.add('stamped');
+                
+                setTimeout(() => {
+                    envelope.classList.remove('floating');
+                    envelope.classList.add('fly-away');
+                    
+                    setTimeout(() => {
+                        successOverlay.classList.add('visible');
+                    }, 1200); 
+                }, 800);
+            }, 400);
+        }
+
+        function returnToStart() {
+            stamp.style.transition = "all 0.5s ease-out";
+            stamp.style.top = initialStampPos.top;
+            stamp.style.left = initialStampPos.left;
+
+            setTimeout(() => {
+                stamp.style.transition = "transform 0.1s, opacity 0.5s";
+            }, 500);
+        }
+
+    </script>
+</body>
+</html>
