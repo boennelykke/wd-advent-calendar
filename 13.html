@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Festive Duck Chef</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@400;700&family=Nunito:wght@400;600;800&display=swap');
+
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #f0fdf4; /* Light green background */
+            overflow-x: hidden;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .title-font {
+            font-family: 'Mountains of Christmas', cursive;
+        }
+
+        /* Custom Animations */
+        @keyframes bounce-gentle {
+            0%, 100% { transform: translateY(-5%); }
+            50% { transform: translateY(0); }
+        }
+
+        @keyframes sizzle {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        .animate-bounce-gentle {
+            animation: bounce-gentle 2s infinite;
+        }
+
+        .duck-raw { filter: sepia(0.2) saturate(1.2); }
+        .duck-cooked { filter: sepia(0.6) saturate(1.5) brightness(0.9); }
+        .duck-burnt { filter: grayscale(1) brightness(0.3); }
+
+        .progress-bar-transition {
+            transition: width 0.2s ease-in-out, background-color 0.5s;
+        }
+
+        .ingredient-card {
+            transition: all 0.2s;
+        }
+        .ingredient-card:active {
+            transform: scale(0.95);
+        }
+
+        /* Oven Glow */
+        .oven-internal {
+            background: #333;
+            box-shadow: inset 0 0 50px #000;
+            transition: background-color 1s;
+        }
+        .oven-on {
+            background: #4a1c1c;
+            box-shadow: inset 0 0 50px #000, 0 0 20px rgba(255, 100, 0, 0.2);
+        }
+        .grill-on {
+            background: #5c1818;
+            box-shadow: inset 0 0 50px #000, 0 0 30px rgba(255, 50, 0, 0.5);
+        }
+
+        /* Steam particles */
+        .steam {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: rise 2s infinite ease-out;
+        }
+        @keyframes rise {
+            0% { transform: translateY(0) scale(1); opacity: 0; }
+            50% { opacity: 0.8; }
+            100% { transform: translateY(-40px) scale(2); opacity: 0; }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center text-gray-800">
+
+    <!-- Game Container -->
+    <div id="game-app" class="w-full max-w-2xl bg-white shadow-2xl rounded-xl overflow-hidden border-4 border-red-700 min-h-[600px] relative">
+        
+        <!-- Header -->
+        <div class="bg-red-700 text-white p-4 text-center relative">
+            <h1 class="text-3xl md:text-4xl title-font font-bold">The Festive Duck Chef 🦆</h1>
+            <div id="score-display" class="hidden absolute right-4 top-1/2 transform -translate-y-1/2 bg-white text-red-700 px-3 py-1 rounded-full font-bold text-sm shadow-md border-2 border-red-100">
+                Score: 0
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div id="game-content" class="p-6 flex flex-col items-center justify-center h-full relative">
+            <!-- Dynamic Content Injected Here -->
+        </div>
+
+    </div>
+
+    <!-- Instructions / Footer -->
+    <div class="mt-4 text-center text-green-800 text-sm p-2">
+        <p><i class="fas fa-tree"></i> Make the perfect Christmas meal! <i class="fas fa-tree"></i></p>
+    </div>
+
+    <!-- Audio Elements (Simulated logic, no actual files for portability) -->
+    
+    <script>
+        // --- GAME STATE & DATA ---
+        const state = {
+            screen: 'START', // START, PREP, MIX, STUFF, BAKE, RESULT
+            score: 0,
+            ingredientsPrepared: 0,
+            stuffingMixed: false,
+            duckStuffed: false,
+            ovenTemp: 20, // Celcius
+            targetOvenTemp: 160,
+            duckCoreTemp: 10,
+            duckSkinCrisp: 0, // 0 to 100
+            moisture: 100, // 0 to 100
+            timeElapsed: 0, // In game minutes
+            basteTimer: 0,
+            isOvenOn: false,
+            isGrillOn: false,
+            gameLoopId: null,
+            message: ""
+        };
+
+        const RECIPE_TARGETS = {
+            ovenTemp: 160,
+            coreTempMin: 70,
+            coreTempMax: 75,
+            totalTimeMin: 170, // approx 3 hours
+            totalTimeMax: 190
+        };
+
+        const INGREDIENTS = [
+            { id: 'apple', name: 'Tart Apple', icon: '🍎', action: 'Cut into wedges' },
+            { id: 'onion', name: 'Red Onions', icon: '🧅', action: 'Cut into wedges' },
+            { id: 'plum', name: 'Plums', icon: '🟣', action: 'Cut into wedges' },
+            { id: 'prune', name: 'Pitted Prunes', icon: '🟤', action: 'Ready to mix' },
+            { id: 'thyme', name: 'Thyme', icon: '🌿', action: 'Ready to mix' },
+            { id: 'orange', name: 'Orange Juice', icon: '🍊', action: 'Squeeze' }
+        ];
+
+        // --- RENDER FUNCTIONS ---
+
+        const app = document.getElementById('game-content');
+        const scoreDisplay = document.getElementById('score-display');
+
+        function render() {
+            scoreDisplay.innerText = `Rating: ${Math.floor(state.score)}`;
+            app.innerHTML = ''; // Clear container
+
+            switch(state.screen) {
+                case 'START':
+                    renderStartScreen();
+                    break;
+                case 'PREP':
+                    renderPrepScreen();
+                    break;
+                case 'MIX':
+                    renderMixScreen();
+                    break;
+                case 'STUFF':
+                    renderStuffScreen();
+                    break;
+                case 'BAKE':
+                    renderBakeScreen();
+                    break;
+                case 'RESULT':
+                    renderResultScreen();
+                    break;
+            }
+        }
+
+        function renderStartScreen() {
+            app.innerHTML = `
+                <div class="text-center space-y-6">
+                    <div class="text-6xl animate-bounce-gentle">🦆🎄</div>
+                    <p class="text-lg text-gray-600 max-w-md mx-auto">
+                        Welcome, Chef! Your mission is to cook the perfect <strong>Christmas Duck</strong>.
+                        Follow the recipe precisely: 
+                        <br><span class="text-sm italic text-gray-500">160°C, Core Temp 75°C, Crisp skin!</span>
+                    </p>
+                    <button onclick="startGame()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:scale-105">
+                        Start Cooking
+                    </button>
+                    <div class="grid grid-cols-3 gap-2 mt-4 opacity-50 text-2xl">
+                        <span>🍎</span><span>🧅</span><span>🍊</span>
+                    </div>
+                </div>
+            `;
+            scoreDisplay.classList.add('hidden');
+        }
+
+        function renderPrepScreen() {
+            scoreDisplay.classList.remove('hidden');
+            let html = `
+                <div class="w-full text-center mb-4">
+                    <h2 class="text-2xl font-bold text-green-800">Step 1: Prep Ingredients</h2>
+                    <p class="text-sm text-gray-500">Click ingredients to prepare them!</p>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 w-full">
+            `;
+
+            INGREDIENTS.forEach((ing, index) => {
+                const isDone = state.prepStatus && state.prepStatus[ing.id];
+                html += `
+                    <button onclick="prepIngredient('${ing.id}')" 
+                        class="ingredient-card p-4 rounded-xl border-2 ${isDone ? 'bg-green-100 border-green-500 opacity-50' : 'bg-white border-red-200 hover:border-red-500'} flex flex-col items-center justify-center h-32 relative"
+                        ${isDone ? 'disabled' : ''}>
+                        <span class="text-4xl mb-2">${ing.icon}</span>
+                        <span class="font-bold text-sm">${ing.name}</span>
+                        <span class="text-xs text-gray-500">${ing.action}</span>
+                        ${isDone ? '<div class="absolute inset-0 flex items-center justify-center text-green-600 text-4xl"><i class="fas fa-check"></i></div>' : ''}
+                    </button>
+                `;
+            });
+
+            html += `</div>`;
+            app.innerHTML = html;
+        }
+
+        function renderMixScreen() {
+            app.innerHTML = `
+                <div class="w-full text-center space-y-6">
+                    <h2 class="text-2xl font-bold text-green-800">Step 2: Combine Filling</h2>
+                    
+                    <div class="relative w-48 h-48 mx-auto bg-gray-200 rounded-full border-4 border-gray-300 flex items-center justify-center overflow-hidden shadow-inner group cursor-pointer" onclick="mixIngredients()">
+                        <div id="bowl-contents" class="text-4xl transition-all duration-500 transform group-hover:scale-110">🥣</div>
+                        <div class="absolute bottom-2 text-xs text-gray-500">Click to Mix!</div>
+                    </div>
+
+                    <p class="text-gray-600" id="mix-feedback">Combine apples, onions, plums, prunes, orange juice, bay leaves, thyme, salt & pepper.</p>
+                </div>
+            `;
+        }
+
+        function renderStuffScreen() {
+            const isReady = state.isSalted && state.isStuffed;
+            
+            app.innerHTML = `
+                <div class="w-full text-center space-y-4">
+                    <h2 class="text-2xl font-bold text-green-800">Step 3: Stuff & Rub</h2>
+                    
+                    <div class="flex justify-center items-center space-x-8">
+                        <div class="text-center">
+                            <div class="text-5xl mb-2">🧂</div>
+                            <button onclick="rubSalt()" class="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded text-sm font-bold" ${state.isSalted ? 'disabled' : ''}>Rub Salt</button>
+                        </div>
+                        
+                        <div class="relative">
+                            <div id="duck-visual" class="text-8xl transition-all">🦆</div>
+                            ${state.isStuffed ? '<div class="absolute -right-2 top-0 text-green-600 text-2xl bg-white rounded-full"><i class="fas fa-check-circle"></i></div>' : ''}
+                            ${state.isSalted ? '<div class="absolute -left-2 top-0 text-green-600 text-2xl bg-white rounded-full"><i class="fas fa-check-circle"></i></div>' : ''}
+                        </div>
+
+                        <div class="text-center">
+                            <div class="text-5xl mb-2">🥣</div>
+                            <button onclick="stuffDuck()" class="bg-orange-100 hover:bg-orange-200 px-4 py-2 rounded text-sm font-bold text-orange-800" ${state.isStuffed ? 'disabled' : ''}>Stuff Duck</button>
+                        </div>
+                    </div>
+
+                    <div id="action-area" class="h-8 text-red-600 font-bold">
+                        ${isReady ? "Perfect! Ready for the oven." : "Prepare the duck..."}
+                    </div>
+
+                    <button id="bake-btn" onclick="startBakingPhase()" ${isReady ? '' : 'disabled'} class="mt-4 ${isReady ? 'bg-red-600 hover:bg-red-700 shadow-lg' : 'bg-gray-400'} text-white font-bold py-3 px-8 rounded-full transition-all">
+                        Put in Oven
+                    </button>
+                </div>
+            `;
+        }
+
+        function renderBakeScreen() {
+            app.innerHTML = `
+                <div class="w-full h-full flex flex-col justify-between">
+                    
+                    <!-- Goal Banner -->
+                    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-2 mb-2 text-xs md:text-sm text-yellow-800 flex items-center justify-between shadow-sm">
+                        <div>
+                            <span class="font-bold">🎯 GOAL:</span> Roast until <span class="font-bold">75°C</span> Core Temp.
+                        </div>
+                        <div class="text-xs italic opacity-75">
+                            (Grill at end for skin!)
+                        </div>
+                    </div>
+
+                    <!-- Top Info Bar -->
+                    <div class="flex justify-between items-center bg-gray-100 p-2 rounded-lg mb-2 shadow-inner">
+                        <div class="text-center">
+                            <div class="text-xs text-gray-500">Timer</div>
+                            <div class="font-mono font-bold text-xl" id="timer-display">00:00</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-xs text-gray-500">Core Temp</div>
+                            <div class="font-mono font-bold text-xl ${getTempColor(state.duckCoreTemp)}" id="core-temp-display">10°C</div>
+                            <div class="text-xs font-bold text-green-600">Target: 70-75°C</div>
+                        </div>
+                    </div>
+
+                    <!-- Oven Visual -->
+                    <div class="flex-grow bg-gray-800 rounded-t-xl relative overflow-hidden flex items-center justify-center p-8 oven-internal" id="oven-visual">
+                        <!-- Rack -->
+                        <div class="absolute w-full h-2 bg-gray-400 top-2/3"></div>
+                        <!-- Water Pan -->
+                        <div class="absolute w-2/3 h-6 bg-blue-900 bottom-4 rounded opacity-50 border-t border-blue-400 flex items-center justify-center text-xs text-white">
+                            Water & Veggies
+                        </div>
+
+                        <!-- Duck -->
+                        <div id="baking-duck" class="text-9xl relative z-10 transition-all duration-1000 transform origin-bottom duck-raw">
+                            🦆
+                        </div>
+
+                        <!-- Steam Container -->
+                        <div id="steam-container" class="absolute inset-0 pointer-events-none"></div>
+
+                        <!-- Baste Alert -->
+                        <button id="baste-btn" onclick="basteDuck()" class="hidden absolute top-10 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-lg py-3 px-8 rounded-full shadow-[0_0_20px_rgba(37,99,235,0.8)] animate-bounce z-20 border-4 border-white transform transition hover:scale-110">
+                            <i class="fas fa-tint mr-2"></i> BASTE NOW!
+                        </button>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="bg-gray-200 p-4 rounded-b-xl space-y-3">
+                        
+                        <!-- Temperature Slider -->
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs font-bold w-12">Oven: <span id="oven-setting-display">160</span>°C</span>
+                            <input type="range" min="100" max="250" value="160" step="10" 
+                                class="w-full h-2 bg-gray-400 rounded-lg appearance-none cursor-pointer"
+                                oninput="setOvenTemp(this.value)">
+                        </div>
+
+                        <div class="flex flex-col space-y-2">
+                            <div class="flex justify-between space-x-2">
+                                <div class="flex-1 flex flex-col">
+                                    <button onclick="toggleFan()" id="fan-btn" class="w-full bg-gray-300 py-2 rounded font-bold text-sm border-b-4 border-gray-400 active:border-b-0 active:mt-1">
+                                        Fan Oven (Power)
+                                    </button>
+                                    <span class="text-[10px] text-center text-gray-500 mt-1 leading-tight">Main heat. Turn off when Grilling.</span>
+                                </div>
+                                
+                                <div class="flex-1 flex flex-col">
+                                    <button onclick="toggleGrill()" id="grill-btn" class="w-full bg-gray-300 py-2 rounded font-bold text-sm border-b-4 border-gray-400 active:border-b-0 active:mt-1 text-red-800">
+                                        Grill (Crisp)
+                                    </button>
+                                    <span class="text-[10px] text-center text-gray-500 mt-1 leading-tight">Use last 5 mins to crisp skin.</span>
+                                </div>
+                                
+                                <div class="flex-1 flex flex-col">
+                                    <button id="serve-btn" onclick="finishCooking()" class="w-full bg-green-600 text-white py-2 rounded font-bold text-sm border-b-4 border-green-800 active:border-b-0 active:mt-1 transition-all">
+                                        SERVE
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between text-xs text-gray-500 px-1 pt-2 border-t border-gray-300">
+                            <span>Moisture: <span id="moisture-display">100</span>%</span>
+                            <span>Crispiness: <span id="crisp-display">0</span>% <span class="text-green-600 font-bold">(Target: 100%)</span></span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            // Initialize baking state
+            state.duckCoreTemp = 10;
+            state.ovenTemp = 20; // Starts cold until turned on
+            setOvenTemp(160); // Set knob
+            toggleFan(); // Auto turn on fan initially as per recipe
+        }
+
+        function renderResultScreen() {
+            let title, color, msg;
+            
+            // Evaluation Logic
+            const tempScore = (state.duckCoreTemp >= 70 && state.duckCoreTemp <= 78) ? 100 : Math.max(0, 100 - Math.abs(state.duckCoreTemp - 75)*5);
+            
+            // New Crisp Score Logic: 100 is perfect. Penalty if you go over (burn).
+            let crispScore = state.duckSkinCrisp;
+            if(crispScore > 100) {
+                 // Penalty for burning: lose 4 points for every 1% over 100
+                crispScore = Math.max(0, 100 - (crispScore - 100) * 4);
+            }
+
+            const moistScore = state.moisture;
+            
+            const totalScore = (tempScore * 0.5) + (crispScore * 0.3) + (moistScore * 0.2);
+            
+            // Burnt threshold raised to 115
+            if (state.duckCoreTemp > 85 || state.duckSkinCrisp > 115) {
+                title = "Burnt / Dry!";
+                color = "text-red-800";
+                msg = "Oh no! The duck is overcooked or the skin is burnt.";
+            } else if (state.duckCoreTemp < 65) {
+                title = "Undercooked!";
+                color = "text-yellow-600";
+                msg = "It's still raw in the middle. Food safety risk!";
+            } else {
+                title = "Delicious!";
+                color = "text-green-700";
+                msg = "Perfectly roasted Christmas duck.";
+            }
+
+            app.innerHTML = `
+                <div class="text-center space-y-6 animate-fade-in">
+                    <h2 class="text-4xl title-font font-bold ${color}">${title}</h2>
+                    <div class="text-8xl">${state.duckCoreTemp > 80 ? '🍗' : '🦆'}</div>
+                    
+                    <div class="bg-gray-100 p-6 rounded-lg text-left max-w-xs mx-auto space-y-2">
+                        <div class="flex justify-between">
+                            <span>Core Temp:</span>
+                            <span class="font-bold ${getTempColor(state.duckCoreTemp)}">${Math.floor(state.duckCoreTemp)}°C</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Crispiness:</span>
+                            <span class="font-bold ${state.duckSkinCrisp > 100 ? 'text-red-600' : 'text-orange-600'}">${Math.floor(state.duckSkinCrisp)}%</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Moisture:</span>
+                            <span class="font-bold text-blue-600">${Math.floor(state.moisture)}%</span>
+                        </div>
+                        <div class="border-t border-gray-300 pt-2 mt-2 flex justify-between text-lg font-bold">
+                            <span>Chef Rating:</span>
+                            <span>${Math.floor(totalScore)}/100</span>
+                        </div>
+                    </div>
+
+                    <p class="text-gray-600 italic">"${msg}"</p>
+
+                    <button onclick="resetGame()" class="bg-red-600 text-white px-6 py-2 rounded-full font-bold shadow-lg hover:bg-red-700">
+                        Cook Again
+                    </button>
+                </div>
+            `;
+        }
+
+        // --- GAME ACTIONS ---
+
+        function startGame() {
+            state.screen = 'PREP';
+            state.prepStatus = {};
+            render();
+        }
+
+        function resetGame() {
+            if(state.gameLoopId) clearInterval(state.gameLoopId);
+            
+            // Reset State variables
+            state.screen = 'START';
+            state.score = 0;
+            state.ingredientsPrepared = 0;
+            state.stuffingMixed = false;
+            state.duckStuffed = false;
+            state.ovenTemp = 20;
+            state.targetOvenTemp = 160;
+            state.duckCoreTemp = 10;
+            state.duckSkinCrisp = 0;
+            state.moisture = 100;
+            state.timeElapsed = 0;
+            state.basteTimer = 0;
+            state.isOvenOn = false;
+            state.isGrillOn = false;
+            state.gameLoopId = null;
+            state.message = "";
+            
+            // Reset dynamic fields added during gameplay
+            state.prepStatus = {};
+            state.isSalted = false;
+            state.isStuffed = false;
+            
+            render();
+        }
+
+        function prepIngredient(id) {
+            state.prepStatus = state.prepStatus || {};
+            state.prepStatus[id] = true;
+            
+            // Check if all done
+            const allDone = INGREDIENTS.every(i => state.prepStatus[i.id]);
+            render(); // Re-render to show checkmark
+            
+            if(allDone) {
+                setTimeout(() => {
+                    state.screen = 'MIX';
+                    render();
+                }, 500);
+            }
+        }
+
+        function mixIngredients() {
+            const bowl = document.getElementById('bowl-contents');
+            bowl.innerHTML = "🥣🍎🧅🌿";
+            bowl.classList.add('animate-spin');
+            
+            document.getElementById('mix-feedback').innerText = "Mixing fruit, herbs and spices...";
+            document.getElementById('mix-feedback').className = "text-green-600 font-bold";
+
+            setTimeout(() => {
+                state.screen = 'STUFF';
+                render();
+            }, 1500);
+        }
+
+        function rubSalt() {
+            state.isSalted = true;
+            renderStuffScreen(); // Refresh UI
+        }
+
+        function stuffDuck() {
+            state.isStuffed = true;
+            renderStuffScreen(); // Refresh UI
+        }
+
+        function startBakingPhase() {
+            state.screen = 'BAKE';
+            render();
+            startGameLoop();
+        }
+
+        // --- BAKING SIMULATION LOGIC ---
+
+        function setOvenTemp(val) {
+            state.targetOvenTemp = parseInt(val);
+            document.getElementById('oven-setting-display').innerText = val;
+        }
+
+        function toggleFan() {
+            state.isOvenOn = !state.isOvenOn;
+            state.isGrillOn = false; // Mutually exclusive for simplicity in UI logic
+            updateOvenVisuals();
+        }
+
+        function toggleGrill() {
+            state.isGrillOn = !state.isGrillOn;
+            state.isOvenOn = false; 
+            if(state.isGrillOn) state.targetOvenTemp = 220; // Grill is hot
+            updateOvenVisuals();
+        }
+
+        function updateOvenVisuals() {
+            const oven = document.getElementById('oven-visual');
+            const fanBtn = document.getElementById('fan-btn');
+            const grillBtn = document.getElementById('grill-btn');
+
+            if(state.isGrillOn) {
+                oven.className = "flex-grow rounded-t-xl relative overflow-hidden flex items-center justify-center p-8 transition-colors duration-1000 grill-on";
+                grillBtn.classList.add('bg-red-200', 'border-red-400');
+                fanBtn.classList.remove('bg-green-200', 'border-green-400');
+            } else if (state.isOvenOn) {
+                oven.className = "flex-grow rounded-t-xl relative overflow-hidden flex items-center justify-center p-8 transition-colors duration-1000 oven-on";
+                fanBtn.classList.add('bg-green-200', 'border-green-400');
+                grillBtn.classList.remove('bg-red-200', 'border-red-400');
+            } else {
+                oven.className = "flex-grow rounded-t-xl relative overflow-hidden flex items-center justify-center p-8 transition-colors duration-1000 oven-internal";
+                fanBtn.classList.remove('bg-green-200', 'border-green-400');
+                grillBtn.classList.remove('bg-red-200', 'border-red-400');
+            }
+        }
+
+        function basteDuck() {
+            state.moisture = Math.min(100, state.moisture + 15); // Restore moisture
+            document.getElementById('baste-btn').classList.remove('block');
+            document.getElementById('baste-btn').classList.add('hidden');
+            state.lastBasteTime = state.timeElapsed;
+            
+            // Show feedback
+            const oven = document.getElementById('oven-visual');
+            const steam = document.createElement('div');
+            steam.className = 'steam w-8 h-8';
+            steam.style.left = '50%';
+            steam.style.top = '50%';
+            document.getElementById('steam-container').appendChild(steam);
+            setTimeout(() => steam.remove(), 2000);
+        }
+
+        function finishCooking() {
+            clearInterval(state.gameLoopId);
+            state.screen = 'RESULT';
+            render();
+        }
+
+        function getTempColor(temp) {
+            if(temp < 50) return 'text-blue-500';
+            if(temp < 70) return 'text-yellow-600';
+            if(temp <= 75) return 'text-green-600';
+            return 'text-red-600';
+        }
+
+        function formatTime(minutes) {
+            const h = Math.floor(minutes / 60);
+            const m = Math.floor(minutes % 60);
+            return `${h}h ${m < 10 ? '0'+m : m}m`;
+        }
+
+        // --- CORE GAME LOOP ---
+
+        function startGameLoop() {
+            state.timeElapsed = 0;
+            state.lastBasteTime = 0;
+            
+            // 1 tick = 1 game minute
+            // 500ms real time = 1 game minute (Slower pace)
+            // Total cook time approx 3 hours = 180 mins = 1.5 mins real time
+            
+            state.gameLoopId = setInterval(() => {
+                state.timeElapsed++;
+                
+                // 1. Oven Physics
+                let effectiveTemp = state.ovenTemp;
+                
+                if (state.isOvenOn) {
+                    // Heat up towards target
+                    if(state.ovenTemp < state.targetOvenTemp) state.ovenTemp += 2;
+                    else if(state.ovenTemp > state.targetOvenTemp) state.ovenTemp -= 1;
+                } else if (state.isGrillOn) {
+                    state.ovenTemp = 220; // Grill is instant heat in this simplified model
+                } else {
+                    // Cool down
+                    if(state.ovenTemp > 20) state.ovenTemp -= 0.5;
+                }
+
+                // 2. Duck Core Temp Physics
+                // Increased heat transfer coefficient from 0.0015 to 0.0035 to speed up cooking
+                const diff = state.ovenTemp - state.duckCoreTemp;
+                if(diff > 0) {
+                    state.duckCoreTemp += diff * 0.0035; // Faster rise
+                }
+
+                // 3. Skin Crispiness
+                if(state.isGrillOn) {
+                    state.duckSkinCrisp += 2.0; // Fast crisping
+                    state.moisture -= 0.5; // Fast drying
+                } else if (state.ovenTemp > 140) {
+                    state.duckSkinCrisp += 0.1; // Slow browning
+                }
+
+                // 4. Moisture Physics
+                // Moisture drops over time, faster if hotter
+                const dryRate = (state.ovenTemp / 200) * 0.1;
+                state.moisture -= dryRate;
+
+                // 5. Basting Logic (Every 30 mins)
+                if (state.timeElapsed - state.lastBasteTime >= 30 && !document.getElementById('baste-btn').classList.contains('block')) {
+                    const btn = document.getElementById('baste-btn');
+                    btn.classList.remove('hidden');
+                    btn.classList.add('block');
+                }
+
+                // 6. Visual Updates & Live Score
+                const tempScore = (state.duckCoreTemp >= 70 && state.duckCoreTemp <= 78) ? 100 : Math.max(0, 100 - Math.abs(state.duckCoreTemp - 75)*5);
+                
+                // Live Score Logic update
+                let currentCrispScore = state.duckSkinCrisp;
+                if(currentCrispScore > 100) currentCrispScore = Math.max(0, 100 - (currentCrispScore - 100) * 4);
+
+                const moistScore = state.moisture;
+                state.score = (tempScore * 0.5) + (currentCrispScore * 0.3) + (moistScore * 0.2);
+                document.getElementById('score-display').innerText = `Rating: ${Math.floor(state.score)}`;
+
+                document.getElementById('timer-display').innerText = formatTime(state.timeElapsed);
+                document.getElementById('core-temp-display').innerText = Math.floor(state.duckCoreTemp) + "°C";
+                document.getElementById('core-temp-display').className = `font-mono font-bold text-xl ${getTempColor(state.duckCoreTemp)}`;
+                document.getElementById('moisture-display').innerText = Math.floor(state.moisture);
+                document.getElementById('crisp-display').innerText = Math.floor(state.duckSkinCrisp);
+                
+                // Color code the crispiness if burnt
+                const crispDisplay = document.getElementById('crisp-display');
+                if(state.duckSkinCrisp > 100) {
+                    crispDisplay.className = "text-red-600 font-bold";
+                    crispDisplay.innerText = Math.floor(state.duckSkinCrisp) + " (BURNING!)";
+                } else {
+                    crispDisplay.className = "";
+                }
+
+                // Serve Button Logic
+                const serveBtn = document.getElementById('serve-btn');
+                if(serveBtn) {
+                    if(state.duckCoreTemp >= 70 && state.duckCoreTemp <= 78) {
+                        serveBtn.classList.add('animate-pulse', 'bg-green-500', 'scale-105', 'shadow-lg', 'ring-2', 'ring-green-300');
+                        serveBtn.innerText = "SERVE NOW!";
+                    } else {
+                        serveBtn.classList.remove('animate-pulse', 'bg-green-500', 'scale-105', 'shadow-lg', 'ring-2', 'ring-green-300');
+                        serveBtn.innerText = "SERVE";
+                    }
+                }
+
+                // Duck Visual State
+                const duck = document.getElementById('baking-duck');
+                if(state.duckSkinCrisp > 110) duck.className = "text-9xl relative z-10 transition-all transform origin-bottom duck-burnt";
+                else if(state.duckCoreTemp > 60) duck.className = "text-9xl relative z-10 transition-all transform origin-bottom duck-cooked";
+                else duck.className = "text-9xl relative z-10 transition-all transform origin-bottom duck-raw";
+
+                // Auto-End if burnt (raised limit to 130 to allow user to react)
+                if(state.duckSkinCrisp >= 130 || state.duckCoreTemp >= 95) {
+                    finishCooking();
+                }
+
+            }, 500); // 500ms = 1 game minute
+        }
+
+        // Initialize the game
+        render();
+    </script>
+</body>
+</html>
