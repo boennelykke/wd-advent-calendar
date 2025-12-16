@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Santa's Quest: The Lost Reindeer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            background-color: #1a1a1a;
+            color: white;
+            font-family: 'Press Start 2P', cursive;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 40px rgba(0,0,0,0.6);
+            border: 4px solid #5d6d7e;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        /* Status Bar for Inventory */
+        #status-bar {
+            height: 60px;
+            background-color: #000;
+            border-top: 2px solid #5d6d7e;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            justify-content: space-between;
+        }
+
+        #status-text {
+            font-size: 10px;
+            color: #95a5a6;
+        }
+
+        #hud {
+            display: flex;
+            gap: 15px;
+        }
+
+        .item-slot {
+            width: 40px;
+            height: 40px;
+            background: #222;
+            border: 2px solid #444;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0.3; /* Dimmed when empty */
+            font-size: 20px;
+            transition: all 0.3s ease;
+        }
+        .item-slot.acquired {
+            opacity: 1;
+            background: #2c3e50;
+            border-color: #f1c40f;
+            box-shadow: 0 0 8px rgba(241, 196, 15, 0.3);
+            transform: scale(1.05);
+        }
+
+        /* UI Layer for Dialogs/Overlays */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 448px; /* Match canvas height */
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* Push dialog to bottom of canvas */
+        }
+
+        #dialogue-box {
+            background: rgba(0, 0, 0, 0.9);
+            border-top: 2px solid #fff;
+            padding: 25px;
+            min-height: 80px;
+            display: none;
+            font-size: 12px;
+            line-height: 1.8;
+            text-shadow: 1px 1px 0 #000;
+            letter-spacing: 1px;
+            margin-bottom: 10px; /* Space from bottom of canvas */
+        }
+
+        #controls-hint {
+            margin-top: 15px;
+            color: #95a5a6;
+            font-size: 10px;
+            text-align: center;
+            opacity: 0.7;
+        }
+
+        /* Touch Controls */
+        #mobile-controls {
+            display: none;
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            height: 150px;
+            pointer-events: auto;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+            z-index: 100;
+        }
+        
+        @media (hover: none) and (pointer: coarse) {
+            #mobile-controls { display: flex; }
+            #controls-hint { display: none; }
+        }
+
+        .d-pad {
+            position: relative;
+            width: 120px;
+            height: 120px;
+        }
+        .d-btn {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+        }
+        .d-btn:active { background: rgba(255,255,255,0.3); }
+        .d-up { top: 0; left: 40px; }
+        .d-down { bottom: 0; left: 40px; }
+        .d-left { top: 40px; left: 0; }
+        .d-right { top: 40px; right: 0; }
+        
+        .action-btn {
+            width: 80px;
+            height: 80px;
+            background: rgba(231, 76, 60, 0.2);
+            border: 2px solid rgba(231, 76, 60, 0.4);
+            border-radius: 50%;
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+            color: rgba(255,255,255,0.8);
+        }
+        .action-btn:active { background: rgba(231, 76, 60, 0.5); }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="512" height="448"></canvas>
+        <div id="ui-layer">
+            <div id="dialogue-box"></div>
+        </div>
+        <div id="status-bar">
+            <div id="status-text">INVENTORY</div>
+            <div id="hud">
+                <!-- HUD will be populated by JS -->
+            </div>
+        </div>
+        
+        <div id="mobile-controls">
+            <div class="d-pad">
+                <div class="d-btn d-up" data-key="ArrowUp"></div>
+                <div class="d-btn d-down" data-key="ArrowDown"></div>
+                <div class="d-btn d-left" data-key="ArrowLeft"></div>
+                <div class="d-btn d-right" data-key="ArrowRight"></div>
+            </div>
+            <div class="action-btn" data-key=" ">ACT</div>
+        </div>
+    </div>
+
+    <div id="controls-hint">ARROWS to Move &bull; SPACE to Action</div>
+
+<script>
+/**
+ * SANTA'S QUEST: THE LOST REINDEER
+ */
+
+// --- Audio System ---
+const AudioSys = {
+    ctx: null,
+    init: function() {
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    },
+    playTone: function(freq, type, duration, vol = 0.1) {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + duration);
+    },
+    playSfx: function(name) {
+        this.init();
+        if(this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+        
+        switch(name) {
+            case 'step': 
+                this.playTone(80 + Math.random()*20, 'square', 0.05, 0.02); 
+                break;
+            case 'text':
+                this.playTone(300, 'triangle', 0.03, 0.03);
+                break;
+            case 'get':
+                this.playTone(523.25, 'sine', 0.1, 0.1); // C5
+                setTimeout(() => this.playTone(659.25, 'sine', 0.1, 0.1), 100); // E5
+                setTimeout(() => this.playTone(783.99, 'sine', 0.3, 0.1), 200); // G5
+                break;
+            case 'hurt':
+                this.playTone(150, 'sawtooth', 0.3, 0.1);
+                setTimeout(() => this.playTone(100, 'sawtooth', 0.3, 0.1), 100);
+                break;
+            case 'magic':
+                this.playTone(800, 'sine', 0.1, 0.05);
+                setTimeout(() => this.playTone(1200, 'sine', 0.4, 0.05), 100);
+                break;
+            case 'win':
+                this.playTone(523.25, 'sine', 0.1, 0.1);
+                setTimeout(() => this.playTone(659.25, 'sine', 0.1, 0.1), 200);
+                setTimeout(() => this.playTone(783.99, 'sine', 0.1, 0.1), 400);
+                setTimeout(() => this.playTone(1046.50, 'sine', 0.3, 0.4), 600);
+                break;
+        }
+    }
+};
+
+// --- Game Constants & State ---
+const TILE_SIZE = 32;
+const COLS = 16;
+const ROWS = 12; 
+const CANVAS_W = 512;
+const CANVAS_H = 448; 
+
+const ITEMS = {
+    CANDY_CANE: 'Cane', 
+    SNOW_BOOTS: 'Boots', 
+    LANTERN: 'Lantern', 
+    BELLS: 'Bells' 
+};
+
+const STATE = {
+    mode: 'START', // START, PLAY, WIN
+    currentMap: {x: 1, y: 1}, 
+    inventory: new Set(),
+    flags: {},
+    isDialogActive: false,
+    dialogText: "",
+    dialogCharIndex: 0,
+    snowParticles: [],
+    interactionCooldown: 0
+};
+
+// --- Input Handling ---
+const KEYS = {
+    ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+    w: false, s: false, a: false, d: false,
+    " ": false, z: false, Enter: false
+};
+
+window.addEventListener('keydown', (e) => {
+    if(KEYS.hasOwnProperty(e.key) || KEYS.hasOwnProperty(e.key.toLowerCase())) {
+        KEYS[e.key] = true;
+        if(e.key === " " || e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
+        
+        if (STATE.mode === 'START' && (e.key === ' ' || e.key === 'z' || e.key === 'Enter')) {
+             STATE.mode = 'PLAY';
+             AudioSys.playSfx('get');
+             KEYS[e.key] = false; 
+             return;
+        }
+
+        // Dialog Control
+        if(STATE.mode === 'PLAY' && (e.key === " " || e.key === "z") && STATE.isDialogActive) {
+            if(STATE.dialogCharIndex < STATE.dialogText.length) {
+                // Show full text immediately
+                STATE.dialogCharIndex = STATE.dialogText.length;
+                document.getElementById('dialogue-box').textContent = STATE.dialogText;
+            } else {
+                // Close dialog
+                STATE.isDialogActive = false;
+                STATE.interactionCooldown = 20; 
+                document.getElementById('dialogue-box').style.display = 'none';
+            }
+            KEYS[e.key] = false; 
+        }
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if(KEYS.hasOwnProperty(e.key)) KEYS[e.key] = false;
+});
+
+// Mobile Controls
+const btns = document.querySelectorAll('.d-btn, .action-btn');
+btns.forEach(btn => {
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); KEYS[btn.dataset.key] = true; 
+        if(STATE.mode === 'START') {
+            STATE.mode = 'PLAY';
+            AudioSys.playSfx('get');
+            KEYS[btn.dataset.key] = false;
+            return;
+        }
+        if(btn.dataset.key === " " && STATE.isDialogActive) {
+             if(STATE.dialogCharIndex < STATE.dialogText.length) {
+                STATE.dialogCharIndex = STATE.dialogText.length;
+                document.getElementById('dialogue-box').textContent = STATE.dialogText;
+            } else {
+                STATE.isDialogActive = false;
+                STATE.interactionCooldown = 20;
+                document.getElementById('dialogue-box').style.display = 'none';
+            }
+            KEYS[btn.dataset.key] = false;
+        }
+    });
+    btn.addEventListener('touchend', (e) => { e.preventDefault(); KEYS[btn.dataset.key] = false; });
+});
+
+// --- World Data ---
+// 0: Snow, 1: Tree, 2: Ice, 3: Wall, 4: Locked Door, 5: Floor (Wood)
+// 6: Bridge, 7: Stairs 
+// B: Bed, W: Workbench, T: Table/Toys
+const MAPS = {
+    "1,1": { 
+        name: "North Pole Village",
+        data: [
+            "1111111111111111",
+            "1000000000000001",
+            "1033333333000001",
+            "103B555553000001", 
+            "1035555555000001", 
+            "1033333333000001",
+            "10000E0000000001",
+            "1000000000000001", // Path East Closed
+            "1000000000000001",
+            "1110011111111111", 
+            "1110011111111111",
+            "1110011111111111" // Exit South
+        ],
+        npcs: [{x: 5, y: 6, id: "HeadElf", sprite: "elf"}],
+        exits: { south: {x:1, y:2, px: 3, py: 1} }
+    },
+    "2,1": { 
+        name: "Whispering Woods",
+        data: [
+            "1111111111111111",
+            "10000100000100C1", // Chest at 14,1 (Cane)
+            "1001110011110001",
+            "1000000000000001",
+            "1000000000000001", // Left column blocked with tree (1)
+            "1001110111110001",
+            "1000000000100001",
+            "1111110011100001", // West Closed
+            "1111110000000001",
+            "1111110011111111",
+            "1111110011111111",
+            "1111110000111111" 
+        ],
+        exits: { south: {x:2, y:2, px: 7, py: 1} } 
+    },
+    "1,2": { 
+        name: "Frozen Path",
+        isDark: true,
+        data: [
+            "1110011111111111", 
+            "1000000011100001",
+            "1000000000022201", 
+            "100111000022C221", // Chest (12,3) 
+            "1001110000022201", 
+            "1000000000000001",
+            "1000000000000000", 
+            "1001111111110001",
+            "1001111111110001",
+            "1111111111110001",
+            "1111111111110001",
+            "1111111111111111"
+        ],
+        enemies: [{x: 8, y: 4, type: 'wolf', dir: 1, minX: 4, maxX: 12, speed: 2}],
+        exits: { north: {x:1, y:1, px: 3, py: 8}, east: {x:2, y:2, px: 1, py: 6} }
+    },
+    "2,2": { 
+        name: "Toy Workshop",
+        data: [
+            "1111111001111111", 
+            "1111111001111111",
+            "1000000000000001", 
+            "1000033333333001", 
+            "100003W555753001", // 4: Interior + Stairs(7)
+            "1000035555553001", // 5: Interior
+            "0000035555553001", // 6: West path clear outside
+            "1000035555553001", // 7
+            "1000033334333001", // 8: Bottom Wall + Door(4) at 8,8
+            "1000000000000001", 
+            "1001111111110001", 
+            "1111111111111111" 
+        ],
+        interactions: [{x: 8, y: 8, type: "lever", req: ITEMS.CANDY_CANE}],
+        exits: { north: {x:2, y:1, px: 7, py: 8}, west: {x:1, y:2, px: 14, py: 6}, indoor: {x: 9, y: 9, px: 8, py: 5} } 
+    },
+    "9,9": { 
+        name: "Workshop Basement",
+        isDark: true,
+        data: [
+            "3333333333333333",
+            "35W555555555W553", 
+            "3555T55555T55553", 
+            "351C555W55555553", 
+            "3511555555511553",
+            "35W55W555W55W553", 
+            "3555555555555553",
+            "355T5555555T5553",
+            "3555555775555553", // Stairs at 7,8 & 8,8
+            "3333333333333333", // Solid bottom wall
+            "0000000000000000",
+            "0000000000000000"
+        ],
+        npcs: [{x: 8, y: 5, id: "ToyGuardian", sprite: "elf"}],
+        exits: { stairs_up: {x:2, y:2, px: 10, py: 5} } // Return to Workshop
+    },
+    "1,0": { 
+        name: "Glacier Lake",
+        data: [
+            "1111110011111111", // North Exit
+            "1112222222211111",
+            "1122266622221111", 
+            "11222C2622221111", // Chest at 5,3 (Boots)
+            "1122222622221111",
+            "1112222622211111",
+            "1111226622111111",
+            "1111110011111111", 
+            "1111110011111111", 
+            "1111110011111111",
+            "1111110011111111",
+            "1111110011111111" 
+        ],
+        exits: { south: {x:1, y:1, px: 5, py: 1}, north: {x:1, y: -1, px: 7, py: 9} }
+    },
+    "1,-1": { 
+        name: "Santa's Grotto",
+        data: [
+            "1111111111111111",
+            "1110000R00001111", 
+            "1100000000000011",
+            "1100000000000011",
+            "1100000000000011",
+            "1111000000111111",
+            "1111110011111111",
+            "1111110011111111", 
+            "1111110011111111", 
+            "1111110011111111", 
+            "1111110011111111", 
+            "1111110011111111"  
+        ],
+        npcs: [{x: 7, y: 1, id: "Rudolph", sprite: "reindeer"}],
+        exits: { south: {x:1, y:0, px: 6, py: 1} }
+    }
+};
+
+MAPS["1,1"].data[0] = "1111100111111111";
+MAPS["1,1"].data[1] = "1000000000000001";
+MAPS["1,1"].exits.north = {x:1, y:0, px: 6, py: 8};
+
+// --- Player Entity ---
+const Player = {
+    x: 3 * TILE_SIZE,
+    y: 4 * TILE_SIZE,
+    w: 24,
+    h: 24,
+    speed: 3,
+    color: '#e74c3c',
+    dir: 'down',
+    moving: false,
+    frame: 0,
+    
+    update: function() {
+        let dx = 0;
+        let dy = 0;
+        this.moving = false;
+
+        if (KEYS.ArrowUp || KEYS.w) { dy = -this.speed; this.dir = 'up'; this.moving = true; }
+        if (KEYS.ArrowDown || KEYS.s) { dy = this.speed; this.dir = 'down'; this.moving = true; }
+        if (KEYS.ArrowLeft || KEYS.a) { dx = -this.speed; this.dir = 'left'; this.moving = true; }
+        if (KEYS.ArrowRight || KEYS.d) { dx = this.speed; this.dir = 'right'; this.moving = true; }
+
+        if (dx !== 0 && dy !== 0) {
+            dx *= 0.707;
+            dy *= 0.707;
+        }
+
+        if (this.moving) {
+            this.frame += 0.2;
+            if(Math.random() < 0.1) AudioSys.playSfx('step');
+        } else {
+            this.frame = 0;
+        }
+
+        this.move(dx, 0);
+        this.move(0, dy);
+
+        // Auto-enter logic
+        const tx = Math.floor((this.x + this.w/2) / TILE_SIZE);
+        const ty = Math.floor((this.y + this.h/2) / TILE_SIZE);
+        const key = `${STATE.currentMap.x},${STATE.currentMap.y}`;
+        const currentMapData = MAPS[key].data;
+        
+        // Enter Workshop Door
+        if (key === "2,2" && tx === 8 && ty === 8 && currentMapData[ty][tx] === '5') {
+            // Just walk in
+        }
+        
+        // Enter Basement via Stairs (Using updated coordinate if needed, but visually it's just floor change)
+        if (key === "2,2" && currentMapData[ty][tx] === '7') {
+            this.switchMap('indoor');
+        }
+        
+        // Leave Basement via Stairs at bottom
+        if (key === "9,9" && currentMapData[ty][tx] === '7') {
+            // Go back up
+            const exit = MAPS[key].exits.stairs_up;
+            STATE.currentMap = {x: exit.x, y: exit.y};
+            this.x = exit.px * TILE_SIZE;
+            this.y = exit.py * TILE_SIZE;
+        }
+
+        // Map Boundaries
+        if (this.x < 0) this.switchMap('west');
+        else if (this.x > CANVAS_W - this.w) this.switchMap('east');
+        else if (this.y < 0) this.switchMap('north');
+        else if (this.y > (ROWS-2) * TILE_SIZE) this.switchMap('south');
+    },
+
+    move: function(dx, dy) {
+        const nextX = this.x + dx;
+        const nextY = this.y + dy;
+        const map = MAPS[`${STATE.currentMap.x},${STATE.currentMap.y}`];
+
+        if (!this.checkCollision(nextX, this.y, map)) this.x = nextX;
+        if (!this.checkCollision(this.x, nextY, map)) this.y = nextY;
+    },
+
+    checkCollision: function(x, y, map) {
+        const points = [
+            {cx: x, cy: y},
+            {cx: x + this.w, cy: y},
+            {cx: x, cy: y + this.h},
+            {cx: x + this.w, cy: y + this.h}
+        ];
+
+        for (let p of points) {
+            const tx = Math.floor(p.cx / TILE_SIZE);
+            const ty = Math.floor(p.cy / TILE_SIZE);
+            
+            // Allow bridge logic
+            if (ty < 0 || ty >= 12 || tx < 0 || tx >= 16) continue;
+            
+            const tile = map.data[ty][tx];
+            // 6 is Bridge, 7 is Stairs, 5 is Floor
+            if (tile === '1' || tile === '3' || tile === 'B' || tile === 'W' || tile === 'T') return true; 
+            if (tile === '2' && !STATE.inventory.has(ITEMS.SNOW_BOOTS)) return true; // Ice logic
+            if (tile === '4' && !STATE.flags[`door_${STATE.currentMap.x}_${STATE.currentMap.y}`]) return true; 
+        }
+        return false;
+    },
+
+    switchMap: function(direction) {
+        const key = `${STATE.currentMap.x},${STATE.currentMap.y}`;
+        const map = MAPS[key];
+        
+        if (map.exits && map.exits[direction]) {
+            const exit = map.exits[direction];
+            if (direction === 'indoor') {
+                STATE.currentMap = {x: exit.x, y: exit.y};
+            } else {
+                STATE.currentMap = {x: exit.x, y: exit.y};
+            }
+            this.x = exit.px * TILE_SIZE;
+            this.y = exit.py * TILE_SIZE;
+        } else {
+            if(direction === 'west') this.x = 0;
+            if(direction === 'east') this.x = CANVAS_W - this.w;
+            if(direction === 'north') this.y = 0;
+            if(direction === 'south') this.y = (ROWS-2) * TILE_SIZE;
+        }
+        
+        // Announce hidden chest when entering Frozen Path if we have Lantern
+        if (STATE.currentMap.x === 1 && STATE.currentMap.y === 2 && STATE.inventory.has(ITEMS.LANTERN) && !STATE.flags[`chest_1,2_12_3`]) {
+            showDialog("Your Lantern reveals a faint glow in the snow...");
+        }
+    },
+
+    interact: function() {
+        if (STATE.interactionCooldown > 0) return;
+
+        const mapKey = `${STATE.currentMap.x},${STATE.currentMap.y}`;
+        const map = MAPS[mapKey];
+        
+        const cx = this.x + this.w / 2;
+        const cy = this.y + this.h / 2;
+        
+        let fx = cx;
+        let fy = cy;
+        if(this.dir === 'up') fy -= 16;
+        if(this.dir === 'down') fy += 16;
+        if(this.dir === 'left') fx -= 16;
+        if(this.dir === 'right') fx += 16;
+
+        const INTERACTION_RADIUS = 40; 
+
+        const isNear = (tx, ty) => {
+            const tcx = tx * TILE_SIZE + TILE_SIZE/2;
+            const tcy = ty * TILE_SIZE + TILE_SIZE/2;
+            return Math.hypot(fx - tcx, fy - tcy) < INTERACTION_RADIUS;
+        };
+
+        // NPCs
+        if(map.npcs) {
+            const npc = map.npcs.find(n => isNear(n.x, n.y));
+            if(npc) {
+                this.handleNPC(npc);
+                return;
+            }
+        }
+
+        // Interactions (Levers)
+        if(map.interactions) {
+            const act = map.interactions.find(i => isNear(i.x, i.y));
+            if(act) {
+                if(act.type === 'lever') {
+                    if(STATE.inventory.has(act.req)) {
+                        AudioSys.playSfx('magic');
+                        map.data[8] = map.data[8].replace('4', '5'); 
+                        STATE.flags[`door_${STATE.currentMap.x}_${STATE.currentMap.y}`] = true;
+                        showDialog("You used the Candy Cane! The door is open.");
+                    } else {
+                        showDialog("It's locked. A lever is high up on the wall.");
+                    }
+                }
+                return;
+            }
+        }
+
+        // Tiles (Chests, Doors)
+        const baseTx = Math.floor(fx / TILE_SIZE);
+        const baseTy = Math.floor(fy / TILE_SIZE);
+        for(let oy=-1; oy<=1; oy++) {
+            for(let ox=-1; ox<=1; ox++) {
+                const ctx = baseTx + ox;
+                const cty = baseTy + oy;
+                if(ctx < 0 || ctx >= COLS || cty < 0 || cty >= ROWS) continue;
+                
+                if(!isNear(ctx, cty)) continue;
+
+                const tile = map.data[cty][ctx];
+                
+                // Chest Logic
+                if(tile === 'C') {
+                    const chestId = `chest_${mapKey}_${ctx}_${cty}`;
+                    if(STATE.flags[chestId]) {
+                        showDialog("It's empty...");
+                    } else {
+                        // Check contents based on map/pos
+                        let itemFound = null;
+                        if(mapKey === "2,1" && ctx === 14 && cty === 1) itemFound = ITEMS.CANDY_CANE;
+                        if(mapKey === "1,0" && ctx === 5 && cty === 3) itemFound = ITEMS.SNOW_BOOTS;
+                        if(mapKey === "9,9" && ctx === 3 && cty === 3) itemFound = ITEMS.LANTERN;
+                        if(mapKey === "1,2" && ctx === 12 && cty === 3) {
+                            if (!STATE.inventory.has(ITEMS.LANTERN)) {
+                                 // Invisible/Locked
+                                 return;
+                            }
+                            itemFound = ITEMS.BELLS;
+                        }
+
+                        if(itemFound) {
+                            STATE.inventory.add(itemFound);
+                            STATE.flags[chestId] = true;
+                            AudioSys.playSfx('get');
+                            updateHUD();
+                            showDialog(`You opened the chest and found the ${itemFound}!`);
+                        } else {
+                            showDialog("It's empty...");
+                        }
+                    }
+                    return; 
+                }
+                // Enter House
+                if(tile === 'B') {
+                    showDialog("My cozy bed. No time for sleep now!");
+                    return;
+                }
+            }
+        }
+    },
+
+    handleNPC: function(npc) {
+        let text = "...";
+        if(npc.id === "HeadElf") {
+            if(!STATE.inventory.has(ITEMS.CANDY_CANE)) text = "Santa! The path to the Woods is overgrown. You'll have to go South through the Frozen Path to get around.";
+            else if(!STATE.inventory.has(ITEMS.LANTERN)) text = "You found the Cane! The Workshop (South-East) is locked. Use the Cane to open it.";
+            else text = "We need Snow Boots to cross the Frozen Lake (North).";
+        }
+        if(npc.id === "Rudolph") {
+            text = "Reindeer noises... He is asleep! You need something loud!";
+            if(STATE.inventory.has(ITEMS.BELLS)) {
+                text = "JINGLE! Rudolph wakes up! Christmas is saved!";
+                STATE.mode = 'WIN';
+                AudioSys.playSfx('win');
+            }
+        }
+        if(npc.id === "ToyGuardian") {
+            text = "It's dark down here... I think a Lantern is in that chest in the top-left corner.";
+        }
+        showDialog(text);
+    }
+};
+
+// --- Rendering ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function drawTexture(ctx, x, y, w, h, color, type) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+    
+    if(type === 'snow') {
+        ctx.fillStyle = "rgba(200, 230, 255, 0.4)";
+        ctx.fillRect(x+4, y+4, 2, 2); ctx.fillRect(x+20, y+20, 2, 2);
+    } else if (type === 'wood') {
+        ctx.fillStyle = "rgba(0,0,0,0.1)";
+        ctx.fillRect(x, y+4, w, 2); ctx.fillRect(x, y+16, w, 2); ctx.fillRect(x, y+28, w, 2);
+    } else if (type === 'wall') {
+        ctx.fillStyle = "#3e2723"; 
+        ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = "#5d4037"; 
+        ctx.fillRect(x, y+4, w, 4); ctx.fillRect(x, y+16, w, 4);
+    } else if (type === 'bridge') {
+        ctx.fillStyle = "#8d6e63";
+        ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = "#5d4037"; // Planks
+        ctx.fillRect(x, y, w, 2); ctx.fillRect(x, y+8, w, 2); ctx.fillRect(x, y+16, w, 2); ctx.fillRect(x, y+24, w, 2);
+    } else if (type === 'stairs') {
+        ctx.fillStyle = "#5d4037"; // Dark wood
+        ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = "#3e2723"; // Steps
+        ctx.fillRect(x, y+4, w, 4); ctx.fillRect(x, y+12, w, 4); ctx.fillRect(x, y+20, w, 4);
+    }
+}
+
+function draw() {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+    if (STATE.mode === 'START') {
+        drawStartScreen();
+        return;
+    }
+    if (STATE.mode === 'WIN') {
+        drawWinScreen();
+        return;
+    }
+
+    const key = `${STATE.currentMap.x},${STATE.currentMap.y}`;
+    const map = MAPS[key];
+
+    if(!map) return;
+
+    // Draw Map
+    for(let y=0; y<ROWS; y++) {
+        const row = map.data[y];
+        if(!row) continue;
+        for(let x=0; x<COLS; x++) {
+            const tile = row[x];
+            const px = x * TILE_SIZE;
+            const py = y * TILE_SIZE;
+
+            // Fog of War 
+            if(map.isDark && !STATE.inventory.has(ITEMS.LANTERN)) {
+                 const dist = Math.hypot(Player.x - px, Player.y - py);
+                 // Special Exception for the Chest so it glows
+                 const isLanternChest = (key === "9,9" && x === 3 && y === 3 && !STATE.flags[`chest_9,9_3_3`]);
+                 
+                 if(dist > 110 && !isLanternChest) {
+                     ctx.fillStyle = "#000";
+                     ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                     continue;
+                 }
+            }
+
+            // Ground
+            if(tile === '2') {
+                ctx.fillStyle = "#a2dbf3"; // Ice
+                ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = "#fff";
+                ctx.globalAlpha = 0.3;
+                ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px+10, py+32); ctx.stroke();
+                ctx.globalAlpha = 1.0;
+            } else if(tile === '6') {
+                drawTexture(ctx, px, py, TILE_SIZE, TILE_SIZE, "", 'bridge');
+            } else if(tile === '7') {
+                drawTexture(ctx, px, py, TILE_SIZE, TILE_SIZE, "", 'stairs');
+            } else if(tile === '5' || tile === 'B' || tile === 'W' || tile === 'T') {
+                 drawTexture(ctx, px, py, TILE_SIZE, TILE_SIZE, "#d3aa6b", 'wood');
+            } else {
+                 drawTexture(ctx, px, py, TILE_SIZE, TILE_SIZE, (map.isDark) ? "#444" : "#f0f4f8", 'snow');
+            }
+
+            // Objects
+            if(tile === '1') drawTree(ctx, px, py);
+            if(tile === '3') drawTexture(ctx, px, py, TILE_SIZE, TILE_SIZE, "", 'wall');
+            if(tile === 'B') drawBed(ctx, px, py); 
+            if(tile === 'W') drawWorkbench(ctx, px, py); 
+            if(tile === 'T') drawTable(ctx, px, py); 
+            if(tile === '4') { 
+                drawTexture(ctx, px, py, TILE_SIZE, TILE_SIZE, "", 'wall');
+                ctx.fillStyle = "#222";
+                ctx.fillRect(px+4, py+4, 24, 28);
+                ctx.fillStyle = "gold"; 
+                ctx.fillRect(px+12, py+16, 8, 10);
+            }
+            if(tile === 'C') { 
+                // Bells Chest Visibility Logic
+                if (key === "1,2" && x === 12 && y === 3 && !STATE.inventory.has(ITEMS.LANTERN)) {
+                    continue; // Don't draw
+                }
+
+                ctx.fillStyle = "#5d4037";
+                ctx.fillRect(px+2, py+10, 28, 18);
+                ctx.fillStyle = "#ffca28"; 
+                ctx.fillRect(px+2, py+14, 28, 2);
+                ctx.fillRect(px+13, py+14, 6, 6); 
+                
+                // Add explicit Glow to Lantern Chest if active
+                if (key === "9,9" && x === 3 && y === 3 && !STATE.flags[`chest_9,9_3_3`]) {
+                    ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
+                    ctx.beginPath();
+                    ctx.arc(px+16, py+16, 20 + Math.sin(Date.now()/200)*5, 0, Math.PI*2);
+                    ctx.fill();
+                }
+                
+                // Add Glow to Bells Chest if active
+                if (key === "1,2" && x === 12 && y === 3 && !STATE.flags[`chest_1,2_12_3`]) {
+                    ctx.fillStyle = "rgba(255, 215, 0, 0.2)";
+                    ctx.beginPath();
+                    ctx.arc(px+16, py+16, 20 + Math.sin(Date.now()/300)*5, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+        }
+    }
+
+    // Enemies
+    if(map.enemies) {
+        map.enemies.forEach(en => {
+            drawWolf(ctx, en.x * TILE_SIZE, en.y * TILE_SIZE, en.dir);
+        });
+    }
+
+    // NPCs
+    if(map.npcs) {
+        map.npcs.forEach(npc => {
+            if(npc.sprite === "elf") drawElf(ctx, npc.x*32, npc.y*32);
+            else if (npc.sprite === "reindeer") drawReindeer(ctx, npc.x*32, npc.y*32);
+        });
+    }
+
+    drawSanta(ctx, Player.x, Player.y, Player.dir, Player.frame);
+
+    if(!map.isDark) drawSnow();
+
+    // Location Text
+    ctx.fillStyle = "#fff";
+    ctx.font = "10px 'Press Start 2P'";
+    ctx.fillText(MAPS[`${STATE.currentMap.x},${STATE.currentMap.y}`].name, 10, CANVAS_H - 10);
+}
+
+function drawStartScreen() {
+    ctx.fillStyle = "#2c3e50";
+    ctx.fillRect(0,0,CANVAS_W, CANVAS_H);
+    drawSnow();
+
+    const cx = CANVAS_W/2;
+    
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#fff";
+    ctx.font = "30px 'Press Start 2P'";
+    ctx.shadowColor = "#e74c3c";
+    ctx.shadowBlur = 10;
+    ctx.fillText("SANTA'S QUEST", cx, 120);
+    ctx.shadowBlur = 0;
+    
+    ctx.font = "12px 'Press Start 2P'";
+    ctx.fillStyle = "#bdc3c7";
+    ctx.fillText("THE LOST REINDEER", cx, 150);
+
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx - 150, 200, 300, 120);
+    
+    ctx.fillStyle = "#fff";
+    ctx.font = "10px 'Press Start 2P'";
+    ctx.fillText("FIND RUDOLPH", cx, 230);
+    ctx.fillText("SAVE CHRISTMAS", cx, 250);
+    
+    ctx.fillStyle = "#95a5a6";
+    ctx.fillText("ARROWS to Move", cx, 280);
+    ctx.fillText("SPACE to Interact", cx, 300);
+
+    const pulse = Math.abs(Math.sin(Date.now() / 500));
+    ctx.globalAlpha = 0.5 + pulse * 0.5;
+    ctx.fillStyle = "#2ecc71";
+    ctx.font = "12px 'Press Start 2P'";
+    ctx.fillText("PRESS SPACE START", cx, 380);
+    ctx.globalAlpha = 1.0;
+    
+    ctx.textAlign = "left";
+}
+
+function drawWinScreen() {
+    ctx.fillStyle = "#27ae60";
+    ctx.fillRect(0,0,CANVAS_W, CANVAS_H);
+    drawSnow();
+
+    const cx = CANVAS_W/2;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#fff";
+    ctx.font = "24px 'Press Start 2P'";
+    ctx.fillText("CHRISTMAS SAVED!", cx, 150);
+    
+    ctx.font = "12px 'Press Start 2P'";
+    ctx.fillText("Rudolph is awake and ready to fly.", cx, 200);
+    ctx.fillText("Great job, Santa!", cx, 230);
+    
+    ctx.fillStyle = "#f1c40f";
+    ctx.fillText("MERRY CHRISTMAS!", cx, 350);
+    ctx.textAlign = "left";
+}
+
+function drawSanta(ctx, x, y, dir, frame) {
+    const bob = Math.sin(frame * 0.8) * 1;
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.beginPath(); ctx.ellipse(x+12, y+22, 8, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#d32f2f"; ctx.fillRect(x+4, y+10+bob, 16, 12); 
+    ctx.fillStyle = "#212121"; ctx.fillRect(x+3, y+16+bob, 18, 4); 
+    ctx.fillStyle = "#ffca28"; ctx.fillRect(x+10, y+16+bob, 4, 4); 
+    ctx.fillStyle = "#212121"; ctx.fillRect(x+4, y+20+bob, 6, 4); ctx.fillRect(x+14, y+20+bob, 6, 4);
+    ctx.fillStyle = "#ffccbc"; ctx.fillRect(x+6, y+2+bob, 12, 10); 
+    ctx.fillStyle = "#fff"; ctx.fillRect(x+6, y+10+bob, 12, 6); 
+    ctx.fillStyle = "#d32f2f"; ctx.beginPath(); ctx.moveTo(x+2, y+4+bob); ctx.lineTo(x+22, y+4+bob); ctx.lineTo(x+12, y-6+bob); ctx.fill(); 
+    ctx.fillStyle = "#fff"; ctx.fillRect(x+2, y+2+bob, 20, 3); ctx.fillRect(x+10, y-8+bob, 4, 4);
+}
+
+function drawElf(ctx, x, y) {
+    ctx.fillStyle = "rgba(0,0,0,0.2)"; ctx.beginPath(); ctx.ellipse(x+16, y+28, 6, 3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.fillRect(x+10, y+22, 4, 6); ctx.fillRect(x+18, y+22, 4, 6);
+    ctx.fillStyle = "#2ecc71"; ctx.fillRect(x+8, y+14, 16, 10); 
+    ctx.fillStyle = "#27ae60"; ctx.fillRect(x+8, y+20, 16, 2); 
+    ctx.fillStyle = "#ffe0b2"; ctx.fillRect(x+10, y+6, 12, 8); 
+    ctx.fillStyle = "#2ecc71"; ctx.beginPath(); ctx.moveTo(x+8, y+6); ctx.lineTo(x+24, y+6); ctx.lineTo(x+20, y-4); ctx.fill(); 
+    ctx.fillStyle = "#fff"; ctx.fillRect(x+8, y+4, 16, 2);
+}
+
+function drawWolf(ctx, x, y, dir) {
+    // Offset for smoother movement perception
+    const bounce = Math.sin(Date.now() / 150) * 2;
+    // Body
+    ctx.fillStyle = "#7f8c8d"; 
+    ctx.fillRect(x+4, y+12+bounce, 24, 12);
+    // Head
+    ctx.fillRect(x+(dir>0?20:0), y+6+bounce, 10, 10);
+    // Legs
+    ctx.fillStyle = "#5d6d7e";
+    ctx.fillRect(x+6, y+24+bounce, 4, 6);
+    ctx.fillRect(x+22, y+24+bounce, 4, 6);
+    // Eye
+    ctx.fillStyle = "#c0392b";
+    ctx.fillRect(x+(dir>0?26:2), y+8+bounce, 2, 2);
+}
+
+function drawWorkbench(ctx, x, y) {
+    ctx.fillStyle = "#8d6e63"; ctx.fillRect(x, y+8, 32, 16);
+    ctx.fillStyle = "#3e2723"; ctx.fillRect(x+2, y+24, 4, 8); ctx.fillRect(x+26, y+24, 4, 8);
+    ctx.fillStyle = "#e74c3c"; ctx.fillRect(x+4, y+4, 8, 8); 
+}
+
+function drawTable(ctx, x, y) {
+    ctx.fillStyle = "#d7ccc8"; ctx.fillRect(x+2, y+10, 28, 12);
+    ctx.fillStyle = "#5d4037"; ctx.fillRect(x+4, y+22, 4, 6); ctx.fillRect(x+24, y+22, 4, 6);
+    ctx.fillStyle = "#3498db"; ctx.fillRect(x+8, y+6, 6, 8); 
+}
+
+function drawBed(ctx, x, y) {
+    ctx.fillStyle = "#5d4037"; ctx.fillRect(x+2, y+4, 28, 26);
+    ctx.fillStyle = "#ecf0f1"; ctx.fillRect(x+4, y+6, 24, 22);
+    ctx.fillStyle = "#e74c3c"; ctx.fillRect(x+4, y+14, 24, 14);
+    ctx.fillStyle = "#fff"; ctx.fillRect(x+6, y+8, 20, 6);
+}
+
+function drawReindeer(ctx, x, y) {
+    ctx.fillStyle = "#795548"; ctx.fillRect(x+4, y+12, 24, 12); 
+    ctx.fillRect(x+4, y+8, 8, 10); 
+    ctx.fillStyle = "#d32f2f"; ctx.fillRect(x+2, y+12, 4, 4); 
+    ctx.fillStyle = "#d7ccc8"; ctx.fillRect(x+6, y+2, 2, 6); ctx.fillRect(x+10, y+4, 2, 4);
+}
+
+function drawTree(ctx, x, y) {
+    ctx.fillStyle = "rgba(0,0,0,0.2)"; ctx.beginPath(); ctx.ellipse(x+16, y+28, 10, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#5d4037"; ctx.fillRect(x+12, y+24, 8, 8);
+    ctx.fillStyle = "#1b5e20"; ctx.beginPath(); ctx.moveTo(x, y+26); ctx.lineTo(x+32, y+26); ctx.lineTo(x+16, y+10); ctx.fill();
+    ctx.fillStyle = "#2e7d32"; ctx.beginPath(); ctx.moveTo(x+2, y+18); ctx.lineTo(x+30, y+18); ctx.lineTo(x+16, y+4); ctx.fill();
+    ctx.fillStyle = "#4caf50"; ctx.beginPath(); ctx.moveTo(x+6, y+10); ctx.lineTo(x+26, y+10); ctx.lineTo(x+16, y-4); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.beginPath(); ctx.moveTo(x+16, y-4); ctx.lineTo(x+20, y+4); ctx.lineTo(x+12, y+4); ctx.fill();
+}
+
+function drawItemSprite(ctx, x, y, id) {
+    // Only draw items if they are supposed to be visible (e.g., dropped) - but currently items are only in chests
+    // So this function is effectively unused for map rendering, but kept for HUD/future features
+    const float = Math.sin(Date.now() / 300) * 3;
+    const iy = y + float;
+    ctx.fillStyle = "rgba(255, 255, 0, 0.2)"; ctx.beginPath(); ctx.arc(x+16, iy+16, 12, 0, Math.PI*2); ctx.fill();
+
+    if(id === ITEMS.CANDY_CANE) {
+        ctx.strokeStyle = "#ff0000"; ctx.lineWidth = 4; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.arc(x+16, iy+10, 6, Math.PI, 0); ctx.lineTo(x+22, iy+28); ctx.stroke();
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath();
+        ctx.moveTo(x+20, iy+4); ctx.lineTo(x+22, iy+6); ctx.moveTo(x+16, iy+4); ctx.lineTo(x+18, iy+6);
+        ctx.stroke();
+    } else if (id === ITEMS.SNOW_BOOTS) {
+        ctx.fillStyle = "#0288d1"; ctx.beginPath(); ctx.rect(x+6, iy+14, 8, 10); ctx.rect(x+18, iy+14, 8, 10); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.fillRect(x+5, iy+12, 10, 3); ctx.fillRect(x+17, iy+12, 10, 3);
+    } else if (id === ITEMS.LANTERN) {
+        ctx.fillStyle = "#f57c00"; ctx.fillRect(x+10, iy+8, 12, 16);
+        ctx.fillStyle = "#fff9c4"; ctx.fillRect(x+13, iy+11, 6, 10);
+        ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x+16, iy+8); ctx.lineTo(x+16, iy+4); ctx.stroke();
+    } else if (id === ITEMS.BELLS) {
+        ctx.fillStyle = "#f1c40f"; ctx.beginPath(); ctx.arc(x+16, iy+16, 8, 0, Math.PI*2); ctx.fill(); // Bell body
+        ctx.fillStyle = "#c0392b"; ctx.fillRect(x+14, iy+4, 4, 6); // Handle
+    }
+}
+
+function initSnow() {
+    STATE.snowParticles = [];
+    for(let i=0; i<60; i++) {
+        STATE.snowParticles.push({
+            x: Math.random() * CANVAS_W,
+            y: Math.random() * CANVAS_H,
+            s: Math.random() * 2 + 1,
+            v: Math.random() * 1 + 0.5
+        });
+    }
+}
+
+function drawSnow() {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+    STATE.snowParticles.forEach(p => {
+        ctx.fillRect(p.x, p.y, p.s, p.s);
+        p.y += p.v;
+        p.x += Math.sin(p.y/20) * 0.5;
+        if(p.y > CANVAS_H) p.y = 0;
+        if(p.x > CANVAS_W) p.x = 0;
+        if(p.x < 0) p.x = CANVAS_W;
+    });
+}
+
+// --- UI & Dialogue ---
+const hudEl = document.getElementById('hud');
+const dialogEl = document.getElementById('dialogue-box');
+
+function updateHUD() {
+    const slots = [
+        {id: ITEMS.CANDY_CANE, icon: '🍬'},
+        {id: ITEMS.LANTERN, icon: '🏮'},
+        {id: ITEMS.SNOW_BOOTS, icon: '👢'},
+        {id: ITEMS.BELLS, icon: '🔔'}
+    ];
+    hudEl.innerHTML = slots.map(s => `
+        <div class="item-slot ${STATE.inventory.has(s.id) ? 'acquired' : ''}" 
+             title="${s.id}">${STATE.inventory.has(s.id) ? s.icon : ''}</div>
+    `).join('');
+}
+
+function showDialog(text) {
+    STATE.isDialogActive = true;
+    STATE.dialogText = text;
+    STATE.dialogCharIndex = 0;
+    dialogEl.style.display = 'block';
+    dialogEl.textContent = "";
+    AudioSys.playSfx('text');
+}
+
+function updateDialog() {
+    if(STATE.isDialogActive && STATE.dialogCharIndex < STATE.dialogText.length) {
+        STATE.dialogCharIndex += 0.5; 
+        dialogEl.textContent = STATE.dialogText.substring(0, Math.floor(STATE.dialogCharIndex));
+    }
+}
+
+// --- Main Loop ---
+let lastTime = 0;
+function gameLoop(timestamp) {
+    const dt = timestamp - lastTime;
+    lastTime = timestamp;
+
+    if(STATE.interactionCooldown > 0) STATE.interactionCooldown--;
+
+    if (STATE.mode === 'PLAY' && !STATE.isDialogActive) {
+        
+        // Player Updates
+        Player.update();
+        
+        // Enemy Updates
+        const key = `${STATE.currentMap.x},${STATE.currentMap.y}`;
+        if(MAPS[key].enemies) {
+            MAPS[key].enemies.forEach(en => {
+                if(en.type === 'wolf') {
+                    // Move
+                    en.x += en.dir * (en.speed * 0.05); // Slow down for logic consistency
+                    if(en.x > en.maxX) en.dir = -1;
+                    if(en.x < en.minX) en.dir = 1;
+                    
+                    // Collision
+                    const wx = en.x * TILE_SIZE;
+                    const wy = en.y * TILE_SIZE;
+                    // Simple box check
+                    if(Player.x < wx + 24 && Player.x + 24 > wx &&
+                       Player.y < wy + 24 && Player.y + 24 > wy) {
+                        AudioSys.playSfx('hurt');
+                        showDialog("The wolf caught you! You wake up back at the village.");
+                        // Reset Position
+                        STATE.currentMap = {x: 1, y: 1};
+                        Player.x = 200; 
+                        Player.y = 200;
+                    }
+                }
+            });
+        }
+
+        if(KEYS[" "] || KEYS.z) {
+            KEYS[" "] = false; 
+            KEYS.z = false;
+            Player.interact();
+        }
+    } else if (STATE.mode === 'PLAY') {
+        updateDialog();
+    }
+
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+initSnow();
+updateHUD();
+requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
