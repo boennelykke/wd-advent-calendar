@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holiday Rush: Sonic Speed</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0d1b2a;
+            font-family: 'Courier New', Courier, monospace;
+            touch-action: none; /* Prevent zoom on mobile */
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            text-shadow: 2px 2px 0 #000;
+            pointer-events: none;
+            z-index: 10;
+            display: none; /* Hidden initially */
+        }
+        h1 { margin: 0; font-size: 24px; color: #ffeb3b; font-style: italic; }
+        p { margin: 5px 0; font-size: 18px; font-weight: bold; }
+        
+        /* Message / Game Over Overlay */
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            display: none;
+            text-shadow: 3px 3px 0 #c62828;
+            z-index: 20;
+        }
+
+        /* Start Screen Overlay */
+        #start-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(13, 27, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 30;
+            text-align: center;
+        }
+        .key {
+            display: inline-block;
+            background: #eee; color: #333; 
+            padding: 4px 8px; 
+            border-radius: 4px; 
+            font-weight: bold; 
+            margin: 0 3px;
+            box-shadow: 0 2px 0 #999;
+        }
+        .instruction-box {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px;
+            border: 1px solid #ffeb3b;
+            max-width: 600px;
+        }
+
+        /* Simplified Controls Grid */
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            margin-top: 15px;
+            text-align: center;
+        }
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: start;
+        }
+        .keys-group {
+            margin-bottom: 10px;
+            height: 40px; /* fixed height for alignment */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px; /* Added gap for multiple keys */
+        }
+        .control-label {
+            color: #69f0ae;
+            font-size: 16px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Progress Bar */
+        #progress-container {
+            position: absolute;
+            bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 50%; height: 15px;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid #fff;
+            border-radius: 10px;
+            display: none; /* Hidden on start */
+            z-index: 10;
+            overflow: hidden;
+        }
+        #progress-fill {
+            width: 0%; height: 100%;
+            background: linear-gradient(90deg, #76FF03, #69F0AE);
+            border-right: 2px solid white;
+        }
+
+        .hud-row { display: flex; gap: 20px; }
+        .red { color: #ff5252; }
+        .green { color: #69f0ae; }
+    </style>
+</head>
+<body>
+
+<!-- Start Screen -->
+<div id="start-screen">
+    <h1 style="font-size: 60px; color: #ffeb3b; margin-bottom: 10px;">HOLIDAY RUSH</h1>
+    <p style="color: #69f0ae; font-size: 24px;">SONIC SPEED EDITION</p>
+    
+    <div class="instruction-box">
+        <p style="margin-bottom: 20px;">Race to the finish! Collect Rings to survive!</p>
+        
+        <div class="controls-grid">
+            <div class="control-item">
+                <div class="keys-group">
+                    <span class="key">←</span><span class="key">→</span>
+                </div>
+                <span class="control-label">MOVE</span>
+            </div>
+            <div class="control-item">
+                <div class="keys-group">
+                    <span class="key" style="min-width: 60px;">SPACE</span>
+                    <span class="key">↑</span>
+                </div>
+                <span class="control-label">JUMP</span>
+            </div>
+            <div class="control-item">
+                <div class="keys-group">
+                    <span class="key">↓</span>
+                </div>
+                <span class="control-label">ROLL / ATTACK</span>
+            </div>
+        </div>
+    </div>
+
+    <p class="blink" style="font-size: 28px; margin-top: 20px; color: #ffeb3b;">PRESS <span class="key">ENTER</span> TO START</p>
+</div>
+
+<!-- HUD -->
+<div id="ui">
+    <h1>HOLIDAY RUSH</h1>
+    <div class="hud-row">
+        <p class="green">RINGS: <span id="score">0</span></p>
+        <p class="red">TIME: <span id="time">0</span></p>
+    </div>
+</div>
+
+<!-- Progress Bar -->
+<div id="progress-container">
+    <div id="progress-fill"></div>
+</div>
+
+<!-- Game Over Message -->
+<div id="message">
+    <h1 id="msg-title" style="font-size: 48px;">MERRY CHRISTMAS!</h1>
+    <p id="msg-sub" style="font-size: 24px;">Press Enter or Tap to Restart</p>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/**
+ * HOLIDAY RUSH
+ * A Sonic-inspired physics platformer in a single file.
+ */
+
+// --- Constants & Config ---
+const CONFIG = {
+    gravity: 0.5,
+    accel: 0.2, 
+    friction: 0.94,
+    airResistance: 0.98,
+    jumpForce: 11,
+    maxSpeed: 10,
+    boostSpeed: 18, // Speed when hitting a booster
+    rollingFriction: 0.98,
+    colors: {
+        skyTop: '#0B1026',
+        skyBottom: '#2B3266',
+        ground: '#FFFFFF', // Pure White Snow
+        groundDark: '#FFFFFF', // Also White (was blue/teal) to make slopes look seamless
+        sonic: '#2979FF',
+        ring: '#FFD700',
+        enemy: '#B71C1C'
+    }
+};
+
+// --- Game State ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const uiDiv = document.getElementById('ui');
+const uiScore = document.getElementById('score');
+const uiTime = document.getElementById('time');
+const msgEl = document.getElementById('message');
+const msgTitle = document.getElementById('msg-title');
+const startScreen = document.getElementById('start-screen');
+const progressContainer = document.getElementById('progress-container');
+const progressFill = document.getElementById('progress-fill');
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+let frames = 0;
+let gameState = 'start'; // start, playing, gameover, win
+let gameTime = 0;
+let score = 0;
+let loopId = null; 
+
+// --- Input Handling ---
+const keys = {
+    left: false,
+    right: false,
+    up: false,
+    down: false
+};
+
+const handleKey = (e, status) => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = status;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = status;
+    if (e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'KeyW') {
+        if (status && !keys.up && gameState === 'playing') player.jump(); 
+        keys.up = status;
+    }
+    if (e.code === 'ArrowDown' || e.code === 'KeyS') keys.down = status;
+    
+    // Start Game logic
+    if (status && e.code === 'Enter') {
+        if (gameState === 'start') {
+            startGame();
+        } else if (gameState === 'gameover' || gameState === 'win') {
+            resetToMenu();
+        }
+    }
+};
+
+window.addEventListener('keydown', e => handleKey(e, true));
+window.addEventListener('keyup', e => handleKey(e, false));
+
+// Touch controls
+window.addEventListener('touchstart', e => {
+    e.preventDefault(); // prevent scroll
+    const t = e.touches[0];
+    
+    if (gameState === 'start') {
+        startGame();
+        return;
+    } else if (gameState === 'gameover' || gameState === 'win') {
+        resetToMenu();
+        return;
+    }
+    
+    if (t.clientX < width / 2) {
+        keys.left = true;
+    } else {
+        keys.right = true;
+    }
+    if (t.clientY < height * 0.6) {
+        if (!keys.up) player.jump();
+        keys.up = true;
+    } else {
+        keys.down = true;
+    }
+});
+
+window.addEventListener('touchend', () => {
+    keys.left = false;
+    keys.right = false;
+    keys.up = false;
+    keys.down = false;
+});
+
+// --- Classes ---
+
+class Camera {
+    constructor() {
+        this.x = 0;
+        this.y = 0;
+        this.lookAhead = 0;
+    }
+
+    update(target) {
+        this.lookAhead += (target.vx * 15 - this.lookAhead) * 0.05;
+        
+        const w = width || 800;
+        const h = height || 600;
+
+        const targetX = target.x - w / 3 + this.lookAhead;
+        const targetY = target.y - h / 2;
+
+        this.x += (targetX - this.x) * 0.1;
+        this.y += (targetY - this.y) * 0.1;
+
+        if (this.y > 500) this.y = 500; 
+    }
+}
+
+class Particle {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 6;
+        this.vy = (Math.random() - 0.5) * 6;
+        this.life = 1.0;
+        this.type = type;
+        this.color = type === 'ring' ? CONFIG.colors.ring : '#fff';
+        if(type === 'ring') this.vy -= 2; 
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= 0.02;
+        if(this.type === 'snow') this.vy += 0.05;
+        if(this.type === 'ring') this.vy += 0.25; 
+    }
+
+    draw(ctx, camX, camY) {
+        ctx.globalAlpha = Math.max(0, this.life);
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        if (this.type === 'ring') {
+            ctx.arc(this.x - camX, this.y - camY, 3, 0, Math.PI*2);
+        } else {
+            ctx.fillRect(this.x - camX, this.y - camY, 4, 4);
+        }
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+class Player {
+    constructor() {
+        this.x = 0;
+        this.y = 0;
+        this.vx = 0;
+        this.vy = 0;
+        this.width = 40;
+        this.height = 40;
+        this.onGround = false;
+        this.rolling = false;
+        this.facingRight = true;
+        this.angle = 0; 
+        this.invincible = 0;
+        this.slopeAngle = 0; 
+    }
+
+    jump() {
+        if (this.onGround) {
+            this.vy = -CONFIG.jumpForce;
+            this.onGround = false;
+            this.rolling = true;
+            for(let i=0; i<5; i++) particles.push(new Particle(this.x, this.y + 20, 'snow'));
+        }
+    }
+
+    update(platforms, boosters) {
+        // Controls
+        if (keys.right) {
+            if (this.vx < CONFIG.maxSpeed) this.vx += CONFIG.accel;
+            this.facingRight = true;
+        } else if (keys.left) {
+            if (this.vx > -CONFIG.maxSpeed) this.vx -= CONFIG.accel;
+            this.facingRight = false;
+        }
+
+        // Rolling logic
+        if (!this.onGround) {
+            this.rolling = true;
+        } else if (keys.down) {
+            this.rolling = true;
+        } else {
+            this.rolling = false;
+        }
+
+        let fr = (this.onGround && keys.down) ? CONFIG.rollingFriction : 
+                   (this.onGround ? CONFIG.friction : CONFIG.airResistance);
+        
+        if (this.onGround && this.slopeAngle !== 0) {
+            this.vx += this.slopeAngle * 0.5; 
+        }
+
+        if ((!keys.left && !keys.right) || (this.onGround && keys.down)) {
+            this.vx *= fr;
+        }
+
+        this.vy += CONFIG.gravity;
+
+        this.x += this.vx;
+        this.handleCollisionsX(platforms);
+        
+        this.y += this.vy;
+        this.handleCollisionsY(platforms);
+
+        boosters.forEach(b => {
+            if (Math.abs(this.x - b.x) < 30 && Math.abs(this.y - b.y) < 40) {
+                this.vx = this.facingRight ? CONFIG.boostSpeed : -CONFIG.boostSpeed;
+                for(let i=0; i<10; i++) particles.push(new Particle(this.x, this.y, 'sparkle'));
+            }
+        });
+
+        if (this.rolling) {
+            this.angle += (Math.abs(this.vx) > 1 ? this.vx : 5) * 0.2;
+        } else {
+            this.angle = 0;
+        }
+        
+        if (this.y > 2000) endGame(false);
+        if (this.invincible > 0) this.invincible--;
+    }
+
+    handleCollisionsX(rects) {
+        for (let rect of rects) {
+            if (rect.type !== 'flat') continue;
+            
+            if (this.checkCollision(rect)) {
+                if (this.vx > 0) {
+                    if (this.x < rect.x + rect.w * 0.5) {
+                        this.x = rect.x - this.width/2 - 0.1;
+                        this.vx = 0;
+                    }
+                } else if (this.vx < 0) {
+                    if (this.x > rect.x + rect.w * 0.5) {
+                        this.x = rect.x + rect.w + this.width/2 + 0.1;
+                        this.vx = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    handleCollisionsY(rects) {
+        this.onGround = false;
+        this.slopeAngle = 0;
+
+        for (let rect of rects) {
+            if (this.x + this.width/4 > rect.x && this.x - this.width/4 < rect.x + rect.w) {
+                let floorY;
+                if (rect.type === 'flat') {
+                    floorY = rect.y;
+                } else if (rect.type === 'slopeUp') {
+                    let ratio = (this.x - rect.x) / rect.w;
+                    ratio = Math.max(0, Math.min(1, ratio));
+                    floorY = (rect.y + rect.h) - (ratio * rect.h);
+                } else if (rect.type === 'slopeDown') {
+                    let ratio = (this.x - rect.x) / rect.w;
+                    ratio = Math.max(0, Math.min(1, ratio));
+                    floorY = rect.y + (ratio * rect.h);
+                }
+
+                if (this.y + this.height/2 >= floorY - 10 && this.y - this.height/2 < floorY + rect.h) {
+                    if (this.vy >= 0 || this.onGround) {
+                        this.y = floorY - this.height/2;
+                        this.vy = 0;
+                        this.onGround = true;
+                        
+                        if (rect.type === 'slopeUp') this.slopeAngle = -0.5;
+                        if (rect.type === 'slopeDown') this.slopeAngle = 0.5;
+                    }
+                } else if (rect.type === 'flat' && this.vy < 0 && this.y - this.height/2 < rect.y + rect.h && this.y + this.height/2 > rect.y) {
+                    this.y = rect.y + rect.h + this.height/2 + 0.1;
+                    this.vy = 0;
+                }
+            }
+        }
+    }
+
+    checkCollision(rect) {
+        return (this.x + this.width/2 > rect.x &&
+                this.x - this.width/2 < rect.x + rect.w &&
+                this.y + this.height/2 > rect.y &&
+                this.y - this.height/2 < rect.y + rect.h);
+    }
+    
+    draw(ctx, camX, camY) {
+        const cx = this.x - camX;
+        const cy = this.y - camY;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        
+        if (this.invincible > 0 && Math.floor(frames / 4) % 2 === 0) ctx.globalAlpha = 0.5;
+        
+        let visualAngle = this.angle;
+        if (!this.rolling && this.slopeAngle !== 0) visualAngle = this.slopeAngle;
+        
+        ctx.rotate(visualAngle);
+
+        // Body
+        ctx.beginPath();
+        ctx.fillStyle = CONFIG.colors.sonic;
+        ctx.arc(0, 0, 20, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.fillStyle = '#64B5F6';
+        ctx.arc(-5, -5, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (!this.rolling) {
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            const eyeX = this.facingRight ? 5 : -15;
+            ctx.ellipse(eyeX, -8, 8, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            const pupX = this.facingRight ? 8 : -12;
+            ctx.arc(pupX, -8, 3, 0, Math.PI*2);
+            ctx.fill();
+
+            // Hat
+            ctx.fillStyle = '#D32F2F'; 
+            ctx.beginPath();
+            if (this.facingRight) {
+                ctx.moveTo(-10, -15);
+                ctx.lineTo(10, -15);
+                ctx.lineTo(-15, -35); 
+                ctx.fill();
+                ctx.fillStyle = 'white';
+                ctx.beginPath(); ctx.arc(-15, -35, 6, 0, Math.PI*2); ctx.fill();
+                ctx.fillRect(-12, -18, 24, 6);
+            } else {
+                ctx.moveTo(-10, -15);
+                ctx.lineTo(10, -15);
+                ctx.lineTo(15, -35);
+                ctx.fill();
+                ctx.fillStyle = 'white';
+                ctx.beginPath(); ctx.arc(15, -35, 6, 0, Math.PI*2); ctx.fill();
+                ctx.fillRect(-12, -18, 24, 6);
+            }
+        } else {
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 18, 0, Math.PI*2);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+}
+
+class Ring {
+    constructor(x, y) {
+        this.x = x; this.y = y; this.collected = false;
+    }
+    draw(ctx, camX, camY) {
+        if (this.collected) return;
+        const cx = this.x - camX;
+        const cy = this.y - camY;
+        const scale = Math.abs(Math.sin(frames * 0.1));
+        
+        ctx.fillStyle = CONFIG.colors.ring;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(scale, 1);
+        ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#F57F17'; ctx.stroke();
+        ctx.restore();
+    }
+}
+
+class Enemy {
+    constructor(x, y) {
+        this.x = x; this.y = y; this.alive = true;
+        this.vx = -2; this.startX = x; this.patrol = 100;
+    }
+    update() {
+        if(!this.alive) return;
+        this.x += this.vx;
+        if(Math.abs(this.x - this.startX) > this.patrol) this.vx *= -1;
+    }
+    draw(ctx, camX, camY) {
+        if(!this.alive) return;
+        const cx = this.x - camX; const cy = this.y - camY;
+        ctx.fillStyle = '#607D8B'; ctx.fillRect(cx - 15, cy - 15, 30, 30);
+        ctx.fillStyle = this.vx > 0 ? '#FF0000' : '#330000'; ctx.fillRect(cx + 5, cy - 10, 5, 5);
+        ctx.fillStyle = this.vx < 0 ? '#FF0000' : '#330000'; ctx.fillRect(cx - 10, cy - 10, 5, 5);
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.arc(cx - 10, cy + 15, 6, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 10, cy + 15, 6, 0, Math.PI*2); ctx.fill();
+    }
+}
+
+// --- Level Gen ---
+let player, camera, goal;
+let platforms = [], rings = [], enemies = [], particles = [], boosters = [], stars = [];
+let startX = 0; // Store start position for progress bar calculation
+
+function createStars() {
+    stars = [];
+    for(let i=0; i<150; i++) {
+        stars.push({
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * (window.innerHeight * 0.6), // Sky area
+            size: Math.random() * 2 + 0.5,
+            blinkOffset: Math.random() * 100
+        });
+    }
+}
+
+function createLevel() {
+    platforms = []; rings = []; enemies = []; boosters = [];
+    
+    // Start area
+    platforms.push({x: -200, y: 300, w: 600, h: 500, type: 'flat'});
+    player.x = 100; player.y = 200;
+    startX = 100;
+
+    let cx = 400;
+    let cy = 300;
+    
+    // Generate chunks
+    for (let i = 0; i < 20; i++) {
+        const type = Math.random();
+        
+        if (type < 0.3) {
+            // Hill (Up -> Flat -> Down)
+            const w = 200; const h = 100;
+            // Up slope
+            platforms.push({x: cx, y: cy - h, w: w, h: h, type: 'slopeUp'});
+            // Flat top
+            platforms.push({x: cx + w, y: cy - h, w: w, h: 500, type: 'flat'});
+            // Down slope
+            platforms.push({x: cx + w*2, y: cy - h, w: w, h: h, type: 'slopeDown'});
+            
+            // Rings on top
+            for(let j=0; j<3; j++) rings.push(new Ring(cx + w + 50 + j*50, cy - h - 30));
+            // Enemy on top
+            enemies.push(new Enemy(cx + w + 100, cy - h - 20));
+            
+            cx += w * 3;
+        } else if (type < 0.6) {
+            // Long Flat with Booster
+            const w = 600;
+            platforms.push({x: cx, y: cy, w: w, h: 500, type: 'flat'});
+            
+            boosters.push({x: cx + 100, y: cy - 10});
+            // Rings arc
+            for(let j=0; j<5; j++) rings.push(new Ring(cx + 300 + j*30, cy - 30 - Math.sin(j*0.5)*50));
+            // Enemies
+            enemies.push(new Enemy(cx + 400, cy - 20));
+            enemies.push(new Enemy(cx + 500, cy - 20));
+
+            cx += w;
+        } else {
+            // Gap & Islands
+            cx += 100; // Gap
+            const w = 200;
+            const newY = cy + (Math.random() - 0.5) * 100;
+            platforms.push({x: cx, y: newY, w: w, h: 500, type: 'flat'});
+            if(Math.random() > 0.5) enemies.push(new Enemy(cx + w/2, newY - 20));
+            cy = newY;
+            cx += w;
+        }
+    }
+
+    platforms.push({x: cx + 100, y: 300, w: 800, h: 500, type: 'flat'});
+    goal = {x: cx + 500, y: 300};
+
+    // Assign trees once during generation
+    platforms.forEach(p => {
+        if (p.type === 'flat' && Math.random() > 0.8) {
+            p.hasTree = true;
+        }
+    });
+}
+
+// --- Main Loop ---
+
+function resetToMenu() {
+    gameState = 'start';
+    msgEl.style.display = 'none';
+    uiDiv.style.display = 'none';
+    progressContainer.style.display = 'none';
+    startScreen.style.display = 'flex';
+    createStars(); // Generate stars for menu background
+}
+
+function startGame() {
+    // Stop previous loop if it exists
+    if (loopId) cancelAnimationFrame(loopId);
+
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    player = new Player();
+    camera = new Camera();
+    score = 0; gameTime = 0; frames = 0;
+    
+    gameState = 'playing';
+    
+    // UI Resets
+    msgEl.style.display = 'none';
+    startScreen.style.display = 'none';
+    uiDiv.style.display = 'block';
+    progressContainer.style.display = 'block';
+    
+    particles = [];
+    createStars(); // Generate stars for game
+    createLevel();
+    loop();
+}
+
+function endGame(win) {
+    gameState = win ? 'win' : 'gameover';
+    msgEl.style.display = 'block';
+    msgTitle.innerText = win ? "LEVEL COMPLETE!" : "GAME OVER";
+    msgTitle.style.color = win ? "#76FF03" : "#FF5252";
+    // Change subtext
+    document.getElementById('msg-sub').innerText = "Press Enter to Menu";
+}
+
+function update() {
+    if (gameState !== 'playing') return;
+    
+    gameTime += 1/60;
+    frames++;
+    
+    player.update(platforms, boosters);
+    camera.update(player);
+
+    // Update Progress Bar
+    if (goal) {
+        const totalDist = goal.x - startX;
+        const currentDist = player.x - startX;
+        const pct = Math.max(0, Math.min(100, (currentDist / totalDist) * 100));
+        progressFill.style.width = pct + '%';
+    }
+
+    // Enemies
+    enemies.forEach(e => {
+        e.update();
+        if (!e.alive) return;
+        const dist = Math.sqrt((player.x - e.x)**2 + (player.y - e.y)**2);
+        if (dist < 40) {
+            if (player.rolling) {
+                e.alive = false; score += 100;
+                if (!player.onGround) player.vy = -5;
+                for(let i=0; i<8; i++) particles.push(new Particle(e.x, e.y, 'debris'));
+            } else if (player.invincible <= 0) {
+                if (score > 0) {
+                    let lost = Math.min(score, 30);
+                    score = 0;
+                    player.invincible = 120;
+                    player.vx = -player.vx * 0.5; player.vy = -5;
+                    for(let i=0; i<lost; i++) {
+                        let p = new Particle(player.x, player.y, 'ring');
+                        p.vx = (Math.random() - 0.5) * 10; p.vy = -Math.random() * 8 - 4;
+                        particles.push(p);
+                    }
+                } else {
+                    endGame(false);
+                }
+            }
+        }
+    });
+
+    // Rings
+    rings.forEach(r => {
+        if (r.collected) return;
+        if ((player.x - r.x)**2 + (player.y - r.y)**2 < 900) {
+            r.collected = true; score++;
+            particles.push(new Particle(r.x, r.y, 'sparkle'));
+        }
+    });
+
+    // Particles
+    particles.forEach((p, i) => {
+        p.update();
+        if(p.life <= 0) particles.splice(i, 1);
+    });
+
+    if (Math.abs(player.x - goal.x) < 50 && Math.abs(player.y - goal.y) < 100) endGame(true);
+
+    uiScore.innerText = score;
+    uiTime.innerText = Math.floor(gameTime);
+}
+
+function draw() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+
+    // Sky
+    const grad = ctx.createLinearGradient(0, 0, 0, height);
+    grad.addColorStop(0, CONFIG.colors.skyTop); grad.addColorStop(1, CONFIG.colors.skyBottom);
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, width, height);
+
+    // Stars
+    ctx.fillStyle = 'white';
+    stars.forEach(s => {
+        // Twinkle effect
+        const alpha = 0.5 + 0.5 * Math.sin(frames * 0.1 + s.blinkOffset);
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // --- Background Layers (Parallax) ---
+    
+    // Layer 1: Very distant peaks (Slowest)
+    ctx.fillStyle = '#05091a'; // Almost black blue
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    for(let i=0; i<=width; i+=10) {
+        const x = i;
+        // Scroll very slowly (0.05)
+        const offset = (camera.x * 0.05) % 1000;
+        const noise = Math.sin((x + offset) * 0.01) * 100 + Math.cos((x + offset) * 0.03) * 50;
+        ctx.lineTo(x, height - 200 - noise);
+    }
+    ctx.lineTo(width, height);
+    ctx.fill();
+
+    // Layer 2: Mid-range Mountains (Medium Slow)
+    ctx.fillStyle = '#1A237E'; 
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    for(let i=0; i<=width; i+=50) {
+        // Scroll slower (0.2)
+        const x = i;
+        const offset = (camera.x * 0.2);
+        // Map texture logic
+        const hNoise = Math.sin((x + offset) * 0.005) * 80 + Math.sin((x + offset) * 0.02) * 30;
+        ctx.lineTo(x, height - 150 - Math.abs(hNoise));
+    }
+    ctx.lineTo(width, height);
+    ctx.fill();
+
+    // Layer 3: Foreground Forest Silhouette (Faster)
+    ctx.fillStyle = '#0d1b2a'; // Dark foreground blue/green
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    for(let i=0; i<=width; i+=20) {
+        const x = i;
+        const offset = (camera.x * 0.5);
+        // Jagged tree line
+        const treeHeight = Math.abs(Math.sin((x + offset) * 0.13)) * 40;
+        ctx.lineTo(x, height - 50 - treeHeight);
+    }
+    ctx.lineTo(width, height);
+    ctx.fill();
+
+
+    // World
+    platforms.forEach(p => {
+        if (p.x - camera.x > width || p.x + p.w - camera.x < 0) return;
+        const cx = p.x - camera.x;
+        const cy = p.y - camera.y;
+
+        // 1. Draw Ground Base (Snow)
+        ctx.fillStyle = CONFIG.colors.ground;
+        ctx.beginPath();
+        if (p.type === 'flat') {
+            ctx.rect(cx, cy, p.w, p.h);
+        } else if (p.type === 'slopeUp') {
+            ctx.moveTo(cx, cy + p.h);
+            ctx.lineTo(cx + p.w, cy);
+            ctx.lineTo(cx + p.w, cy + p.h);
+            ctx.closePath();
+        } else if (p.type === 'slopeDown') {
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + p.w, cy + p.h);
+            ctx.lineTo(cx, cy + p.h);
+            ctx.closePath();
+        }
+        ctx.fill();
+        
+        // 2. Draw Dirt Block (The brown part underneath)
+        ctx.fillStyle = CONFIG.colors.groundDark;
+        ctx.fillRect(cx, cy + p.h, p.w, 500);
+
+        // 3. Add Icy Crust Top Layer (Slightly blue/white overlay)
+        ctx.fillStyle = 'rgba(225, 245, 254, 0.6)'; // Light frosty overlay
+        if (p.type === 'flat') {
+            ctx.fillRect(cx, cy, p.w, 15); // Top 15px is ice
+        } else if (p.type === 'slopeUp') {
+             // Parallel line for slope is complex, simple rendering:
+             ctx.beginPath();
+             ctx.moveTo(cx, cy + p.h);
+             ctx.lineTo(cx + p.w, cy);
+             ctx.lineTo(cx + p.w, cy + 15);
+             ctx.lineTo(cx, cy + p.h + 15);
+             ctx.fill();
+        } else if (p.type === 'slopeDown') {
+             ctx.beginPath();
+             ctx.moveTo(cx, cy);
+             ctx.lineTo(cx + p.w, cy + p.h);
+             ctx.lineTo(cx + p.w, cy + p.h + 15);
+             ctx.lineTo(cx, cy + 15);
+             ctx.fill();
+        }
+
+        if(p.hasTree) drawTree(cx + 50, cy);
+    });
+
+    // Boosters
+    boosters.forEach(b => {
+        const cx = b.x - camera.x; const cy = b.y - camera.y;
+        
+        // Pole
+        ctx.fillStyle = '#37474F';
+        ctx.fillRect(cx + 8, cy - 25, 4, 25);
+
+        // Sign
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(cx - 5, cy - 50, 30, 25);
+        ctx.strokeStyle = '#FFEA00'; 
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cx - 5, cy - 50, 30, 25);
+
+        ctx.fillStyle = '#FFEA00';
+        ctx.font = '900 16px Arial'; 
+        ctx.fillText('>>>', cx - 1, cy - 32);
+    });
+
+    rings.forEach(r => r.draw(ctx, camera.x, camera.y));
+    enemies.forEach(e => e.draw(ctx, camera.x, camera.y));
+    
+    // Goal
+    const gx = goal.x - camera.x; const gy = goal.y - camera.y;
+    ctx.fillStyle = '#795548'; ctx.fillRect(gx - 5, gy - 60, 10, 60);
+    ctx.fillStyle = '#388E3C'; ctx.beginPath(); 
+    ctx.moveTo(gx-30, gy-60); ctx.lineTo(gx+30, gy-60); ctx.lineTo(gx, gy-110); ctx.fill();
+
+    player.draw(ctx, camera.x, camera.y);
+    particles.forEach(p => p.draw(ctx, camera.x, camera.y));
+}
+
+function drawTree(x, y) {
+    ctx.fillStyle = '#2E7D32';
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+20, y); ctx.lineTo(x+10, y-40); ctx.fill();
+    ctx.fillStyle = '#F44336'; ctx.beginPath(); ctx.arc(x+10, y-10, 3, 0, Math.PI*2); ctx.fill();
+}
+
+function loop() {
+    update();
+    draw();
+    loopId = requestAnimationFrame(loop);
+}
+
+// Initial dummy initialization to set up objects for potential background rendering if desired
+// but primarily to set valid state
+player = new Player();
+camera = new Camera();
+
+// Start at menu
+resetToMenu();
+
+</script>
+</body>
+</html>
