@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final_v2_REAL_FINAL_v3: Christmas Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap');
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #1a1a1a;
+        }
+
+        .desktop-bg {
+            background: linear-gradient(135deg, #2d5a27 0%, #1a3c1a 100%);
+            height: 100vh;
+            position: relative;
+        }
+
+        .window {
+            position: absolute;
+            background: #f0f0f0;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            border: 1px solid #ccc;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .window-header {
+            background: #e0e0e0;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+            user-select: none;
+        }
+
+        .dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+
+        .btn-action {
+            transition: transform 0.1s;
+        }
+        .btn-action:active {
+            transform: scale(0.95);
+        }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        .shaking { animation: shake 0.5s; animation-iteration-count: infinite; }
+        
+        .progress-bar { transition: width 0.3s ease-in-out; }
+
+        .brewing-pulse {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="desktop-bg" id="desktop">
+    <!-- Top Menu Bar -->
+    <div class="w-full h-8 bg-white/10 backdrop-blur-md flex items-center justify-between px-4 text-white text-sm">
+        <div class="flex gap-4">
+            <span class="font-bold"> PixelPush CC</span>
+            <span>Holiday Mode</span>
+            <span>Edit</span>
+            <span>Layer</span>
+            <span>Tinsel</span>
+            <span>Help</span>
+        </div>
+        <div class="flex gap-4 items-center">
+            <span id="game-time">09:00 AM</span>
+            <div class="w-24 bg-gray-900 h-3 rounded-full overflow-hidden">
+                <div id="sanity-fill" class="bg-red-600 h-full w-full progress-bar"></div>
+            </div>
+            <span>Sanity Bar</span>
+        </div>
+    </div>
+
+    <!-- Mail App -->
+    <div class="window w-80 h-96 top-20 left-10" id="mail-app">
+        <div class="window-header">
+            <div>
+                <span class="dot dot-red"></span>
+                <span class="dot dot-yellow"></span>
+                <span class="dot dot-green"></span>
+                <span class="ml-2 font-semibold text-sm text-gray-700">North Pole Mail</span>
+            </div>
+        </div>
+        <div class="flex-1 overflow-y-auto bg-white p-2 text-xs" id="email-list"></div>
+        <div class="hidden flex-1 flex flex-col bg-white p-4" id="email-detail">
+            <button onclick="closeEmail()" class="text-blue-500 font-bold mb-4 flex items-center gap-1 hover:underline">
+                ← Back to Inbox
+            </button>
+            <div id="email-detail-sender" class="font-bold border-b pb-1 text-sm"></div>
+            <div id="email-detail-subject" class="text-blue-600 mb-4 text-xs font-semibold"></div>
+            <div id="email-detail-body" class="text-gray-700 text-sm italic leading-relaxed whitespace-pre-wrap"></div>
+        </div>
+    </div>
+
+    <!-- The "Design" Workspace -->
+    <div class="window w-[600px] h-[450px] top-12 left-[360px]" id="editor-app">
+        <div class="window-header">
+            <div>
+                <span class="dot dot-red"></span>
+                <span class="dot dot-yellow"></span>
+                <span class="dot dot-green"></span>
+                <span class="ml-2 font-semibold text-sm text-gray-700">PixelPush CC - [Christmas_Logo_v1.psd]</span>
+            </div>
+            <div class="text-[10px] text-gray-500" id="layer-info">Layers: 256</div>
+        </div>
+        <div class="flex-1 bg-neutral-800 flex items-center justify-center relative overflow-hidden" id="canvas-area">
+            <div id="logo-project" class="bg-white p-8 shadow-2xl transition-all duration-300 flex items-center justify-center border-dashed border-4 border-gray-300" style="width: 250px; height: 250px;">
+                <div id="logo-content" class="w-full h-full flex flex-col items-center justify-center font-bold text-center text-red-600 overflow-hidden break-words uppercase">
+                    <span class="text-2xl">🎄</span>
+                    <span id="logo-text">XMAS LOGO</span>
+                    <span class="text-xs text-gray-400 mt-2 font-normal">(DRAFT)</span>
+                </div>
+            </div>
+            <div id="feedback-pop" class="absolute hidden bg-yellow-100 border border-yellow-400 p-2 text-[10px] rounded shadow-lg pointer-events-none z-10"></div>
+        </div>
+        <div class="h-12 bg-neutral-200 border-t flex items-center justify-around px-4">
+            <button onclick="handleAction('bigger')" class="bg-red-600 text-white px-3 py-1 rounded text-xs btn-action">More Jolly</button>
+            <button onclick="handleAction('pop')" class="bg-green-700 text-white px-3 py-1 rounded text-xs btn-action">Add "Festive Sparkle"</button>
+            <button onclick="handleAction('feedback')" class="bg-blue-600 text-white px-3 py-1 rounded text-xs btn-action">CEO's Feedback</button>
+            <button onclick="handleAction('save')" class="bg-gray-800 text-white px-3 py-1 rounded text-xs btn-action">Save (v25...)</button>
+        </div>
+    </div>
+
+    <!-- Desktop Icons -->
+    <div class="absolute right-6 top-12 flex flex-col gap-6 items-center text-white text-xs text-center">
+        <div class="flex flex-col items-center gap-1">
+            <div class="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center text-2xl cursor-pointer hover:bg-white/30" onclick="drinkCoffee()">☕️</div>
+            <span id="coffee-label">Gingerbread Latte<br>(Cups: 3)</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+            <div id="coffee-machine-icon" class="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center text-2xl cursor-pointer hover:bg-white/30" onclick="brewCoffee()">⚙️</div>
+            <span id="machine-label">Coffee Machine<br>(Idle)</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+            <div class="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center text-2xl cursor-pointer hover:bg-white/30" onclick="showPortfolio()">📁</div>
+            <span>Final_Finals.zip</span>
+        </div>
+    </div>
+
+    <!-- End Game Overlays -->
+    <div id="game-over" class="fixed inset-0 bg-black/80 hidden z-50 flex items-center justify-center text-center p-10">
+        <div>
+            <h1 class="text-6xl text-white font-bold mb-4">YOU QUIT.</h1>
+            <p class="text-xl text-gray-300 mb-8">The Christmas Spirit broke you. You've retired to a snowy mountain to count rocks.</p>
+            <button onclick="location.reload()" class="bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-gray-200">Try Again</button>
+        </div>
+    </div>
+
+    <div id="game-win" class="fixed inset-0 bg-green-900/90 hidden z-50 flex items-center justify-center text-center p-10">
+        <div>
+            <h1 class="text-6xl text-white font-bold mb-4">DAY COMPLETE!</h1>
+            <p class="text-xl text-gray-300 mb-8">It's 6:00 PM. You survived the Christmas Logo rush with your sanity intact (barely). Go home and don't look at a screen until January.</p>
+            <button onclick="location.reload()" class="bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-gray-200">Work Another Shift</button>
+        </div>
+    </div>
+
+    <!-- Modal for Messages -->
+    <div id="msg-modal" class="fixed inset-0 bg-black/40 hidden z-40 flex items-center justify-center">
+        <div class="bg-white rounded-lg p-6 max-w-sm w-full shadow-2xl border-4 border-red-500">
+            <h2 id="modal-title" class="font-bold text-red-600 text-lg mb-2"></h2>
+            <p id="modal-body" class="text-sm text-gray-700 mb-4"></p>
+            <button onclick="closeModal()" class="w-full bg-gray-800 text-white py-2 rounded">OK</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const emailTemplates = [
+        { sender: "Workfront", subject: "Task Reassigned", body: "URGENT: Task 'Christmas Social Banner B' has been reassigned to you. Deadline: 2 hours ago.", frustration: 18, type: 'workfront' },
+        { sender: "Workfront", subject: "New Comment on Proof #421", body: "Client commented: 'I don't like how the tinsel looks. Can we make it look more premium but also more affordable?'", frustration: 15, type: 'workfront' },
+        { sender: "Workfront", subject: "Status Changed: REJECTED", body: "Your latest upload for 'Logo v12' has been rejected by the CEO. Reason: 'Not enough sparkle.'", frustration: 22, type: 'workfront' },
+        { sender: "Dave (Marketing)", subject: "QUICK XMAS CHANGE", body: "Hey! The Christmas logo is looking good, but can we try a different shade of red? One that says 'magic' but doesn't remind people of ketchup? I need 10 options by lunch.", frustration: 15 },
+        { sender: "Sarah (Client)", subject: "Feedback: Snowflakes", body: "I don't like the shape of the snowflakes. They look too 'cold'. Can we make them warmer? Also, the reindeer looks slightly judged. Can we give him a smile?", frustration: 12 },
+        { sender: "IT Department", subject: "Heated Blanket Warning", body: "Everyone's festive heated blankets are tripping the server room circuits. Do not use 'Save' for the next hour or the North Pole server will explode.", frustration: 20 },
+        { sender: "CEO (Urgent)", subject: "Holiday Vision", body: "I had a dream last night that the logo was actually a 3D hologram of a gingerbread man. Can we pivot to that? We launch in 3 hours.", frustration: 30 },
+        { sender: "No-Reply", subject: "Subscription Expired", body: "Your Holiday-Pack brush license has expired. All your custom snow effects have been deleted. Please renew using the company card that was maxed out at the office party.", frustration: 25 },
+        { sender: "Greg (Manager)", subject: "One more tiny thing", body: "Can we put a Santa hat on every single letter in the company name? And make the hat 'pop'?", frustration: 15 },
+        { sender: "Sarah (Client)", subject: "Resolution issue?", body: "I printed the logo on a 50ft billboard and it looks blurry. Can you just click 'enhance'? I need this fixed for the morning reveal.", frustration: 18 },
+        { sender: "HR", subject: "Holiday Party Reminder", body: "Mandatory fun starts at 5 PM! Please ensure all client deliverables are sent before then. No overtime is approved.", frustration: 10 },
+        { sender: "Dave (Marketing)", subject: "Font Help", body: "Can we use that font from the movie 'The Grinch'? Not the 2018 one, the 1966 one. But make it look modern. Thanks!", frustration: 14 }
+    ];
+
+    let sanity = 100;
+    let timeHours = 9;
+    let timeMinutes = 0;
+    let coffeeCount = 3;
+    let isBrewing = false;
+    let version = 1;
+    let gameActive = true;
+
+    function makeDraggable(el) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        const header = el.querySelector(".window-header");
+        if (header) { header.onmousedown = dragMouseDown; }
+        function dragMouseDown(e) {
+            e.preventDefault();
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = closeDragElement;
+            document.onmousemove = elementDrag;
+        }
+        function elementDrag(e) {
+            e.preventDefault();
+            pos1 = pos3 - e.clientX;
+            pos2 = pos4 - e.clientY;
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            el.style.top = (el.offsetTop - pos2) + "px";
+            el.style.left = (el.offsetLeft - pos1) + "px";
+        }
+        function closeDragElement() {
+            document.onmouseup = null;
+            document.onmousemove = null;
+        }
+    }
+
+    makeDraggable(document.getElementById("mail-app"));
+    makeDraggable(document.getElementById("editor-app"));
+
+    function updateUI() {
+        if (!gameActive) return;
+
+        const fill = document.getElementById('sanity-fill');
+        fill.style.width = sanity + '%';
+        if (sanity < 30) fill.className = 'bg-red-500 h-full w-full progress-bar';
+        else if (sanity < 60) fill.className = 'bg-yellow-500 h-full w-full progress-bar';
+        else fill.className = 'bg-green-500 h-full w-full progress-bar';
+
+        const displayHours = timeHours > 12 ? timeHours - 12 : timeHours;
+        const ampm = timeHours >= 12 ? 'PM' : 'AM';
+        document.getElementById('game-time').innerText = 
+            `${displayHours.toString().padStart(2, '0')}:${timeMinutes.toString().padStart(2, '0')} ${ampm}`;
+        
+        document.getElementById('coffee-label').innerHTML = `Gingerbread Latte<br>(Cups: ${coffeeCount})`;
+        
+        if (sanity <= 0) {
+            sanity = 0;
+            gameActive = false;
+            document.getElementById('game-over').style.display = 'flex';
+        }
+
+        if (timeHours >= 18) {
+            gameActive = false;
+            document.getElementById('game-win').style.display = 'flex';
+        }
+    }
+
+    function addEmail() {
+        if (!gameActive) return;
+        const list = document.getElementById('email-list');
+        const template = emailTemplates[Math.floor(Math.random() * emailTemplates.length)];
+        const email = {...template, read: false, id: Date.now()};
+        const div = document.createElement('div');
+        div.id = `email-item-${email.id}`;
+        
+        div.className = `p-2 border-b hover:bg-gray-100 cursor-pointer mb-1 bg-red-50 border-l-4 border-l-red-500 transition-opacity`;
+        
+        div.innerHTML = `
+            <div class="font-bold text-gray-800">${email.sender}</div>
+            <div class="text-red-700 font-medium">${email.subject}</div>
+            <div class="text-[10px] text-gray-500 truncate">${email.body.substring(0, 30)}...</div>
+        `;
+        div.onclick = () => openEmail(email);
+        list.prepend(div);
+    }
+
+    function openEmail(email) {
+        if (!email.read) {
+            sanity -= email.frustration;
+            email.read = true;
+            const item = document.getElementById(`email-item-${email.id}`);
+            if (item) {
+                item.style.opacity = "0.5";
+                item.classList.remove('bg-red-50', 'border-l-red-500');
+                item.classList.add('bg-white', 'border-l-gray-300');
+            }
+        }
+        document.getElementById('email-list').classList.add('hidden');
+        document.getElementById('email-detail').classList.remove('hidden');
+        document.getElementById('email-detail-sender').innerText = `From: ${email.sender}`;
+        document.getElementById('email-detail-subject').innerText = `Subject: ${email.subject}`;
+        document.getElementById('email-detail-body').innerText = email.body;
+        updateUI();
+        showFeedback(email.type === 'workfront' ? "Workfront notification logged." : "Client feedback applied.");
+    }
+
+    function closeEmail() {
+        document.getElementById('email-list').classList.remove('hidden');
+        document.getElementById('email-detail').classList.add('hidden');
+    }
+
+    function showFeedback(text) {
+        const pop = document.getElementById('feedback-pop');
+        pop.innerText = text;
+        pop.style.display = 'block';
+        pop.style.left = (Math.random() * 400) + 'px';
+        pop.style.top = (Math.random() * 300) + 'px';
+        setTimeout(() => pop.style.display = 'none', 2000);
+    }
+
+    function drinkCoffee() {
+        if (coffeeCount > 0) {
+            sanity = Math.min(100, sanity + 20);
+            coffeeCount--;
+            updateUI();
+            showFeedback("Ah, festive caffeine...");
+        } else {
+            showFeedback("The mug is empty. You need to brew more.");
+        }
+    }
+
+    function brewCoffee() {
+        if (isBrewing) {
+            showFeedback("Machine is busy... be patient!");
+            return;
+        }
+        
+        isBrewing = true;
+        document.getElementById('coffee-machine-icon').classList.add('brewing-pulse');
+        document.getElementById('machine-label').innerHTML = `Coffee Machine<br>(Brewing...)`;
+        showFeedback("Brewing started. Wait 15 seconds.");
+
+        setTimeout(() => {
+            isBrewing = false;
+            coffeeCount = 3;
+            document.getElementById('coffee-machine-icon').classList.remove('brewing-pulse');
+            document.getElementById('machine-label').innerHTML = `Coffee Machine<br>(Idle)`;
+            updateUI();
+            showFeedback("Fresh pot ready! ☕️");
+        }, 15000);
+    }
+
+    function handleAction(type) {
+        if (!gameActive) return;
+        const logo = document.getElementById('logo-project');
+        const content = document.getElementById('logo-content');
+        const text = document.getElementById('logo-text');
+        
+        switch(type) {
+            case 'bigger':
+                let w = parseInt(logo.style.width);
+                logo.style.width = (w + 20) + 'px';
+                logo.style.height = (w + 20) + 'px';
+                sanity -= 5;
+                break;
+            case 'pop':
+                content.style.color = '#' + Math.floor(Math.random()*16777215).toString(16);
+                text.style.fontSize = (Math.random() * 20 + 15) + 'px';
+                sanity -= 5;
+                break;
+            case 'save':
+                version++;
+                showModal("FILE SAVED", `Saved as: Xmas_Final_v${version}_DONT_DELETE.psd`);
+                sanity += 5;
+                break;
+            case 'feedback':
+                text.innerText = "HO HO NO";
+                logo.style.backgroundColor = "#ff0000";
+                content.style.color = "#ffffff";
+                sanity -= 15;
+                break;
+        }
+        updateUI();
+        if (Math.random() < 0.1) triggerCrash();
+    }
+
+    function triggerCrash() {
+        const editor = document.getElementById('editor-app');
+        editor.classList.add('shaking');
+        setTimeout(() => {
+            editor.classList.remove('shaking');
+            showModal("CRITICAL SNOWFALL", "PixelPush CC crashed while rendering 40,000 glitter particles. Unsaved progress has been lost.");
+            sanity -= 20;
+            updateUI();
+        }, 1000);
+    }
+
+    function showModal(title, body) {
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-body').innerText = body;
+        document.getElementById('msg-modal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('msg-modal').style.display = 'none';
+    }
+
+    setInterval(() => {
+        if (!gameActive) return;
+
+        timeMinutes += 5;
+        if (timeMinutes >= 60) {
+            timeMinutes = 0;
+            timeHours++;
+        }
+        
+        if (Math.random() < 0.15) {
+            addEmail();
+        }
+
+        sanity -= 0.5;
+        updateUI();
+    }, 2000);
+
+    window.onload = () => {
+        updateUI();
+        addEmail();
+        setTimeout(() => {
+            showModal("THE CHRISTMAS LOGO CRISIS", "It's December 18th. You are a graphic designer in the marketing department. Objective: Survive until 6:00 PM. The client is 'feeling festive' but has zero vision. Manage the endless flood of emails and Workfront notifications. Don't let your sanity bar reach 0% or you'll quit design forever. Good luck!");
+        }, 500);
+    };
+
+    function showPortfolio() {
+        showModal("ZIP ERROR", "Error: The 'Final_Finals.zip' contains 400 versions of last year's logo. You can't find anything useful.");
+        sanity -= 10;
+        updateUI();
+    }
+</script>
+</body>
+</html>

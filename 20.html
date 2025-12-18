@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GTA – Gift Theft Auto</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a; /* Winter Night Blue */
+            font-family: 'Press Start 2P', cursive;
+            touch-action: none;
+        }
+
+        #gameCanvas {
+            display: block;
+        }
+
+        .ui-overlay {
+            position: absolute;
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 10;
+        }
+
+        /* Start & End Screen Styles */
+        #startScreen, #endScreen {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: radial-gradient(circle, #166534 0%, #0f172a 100%); /* Green to Dark Blue */
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Snow animation for screens */
+        .snow-bg {
+            position: absolute;
+            top:0; left:0; width:100%; height:100%;
+            background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIj48Y2lyY2xlIGN4PSIyNSIgY3k9IjI1IiByPSIxIiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMiIvPjwvc3ZnPg==');
+            animation: snow 20s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes snow { from { background-position: 0 0; } to { background-position: 0 1000px; } }
+
+        h1 {
+            color: #dc2626; /* Christmas Red */
+            text-shadow: 3px 3px 0 #ffffff, 6px 6px 0 #166534; /* White (Snow) & Green shadow */
+            line-height: 1.5;
+        }
+
+        .touch-controls {
+            display: none;
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            padding: 0 20px;
+            box-sizing: border-box;
+            justify-content: space-between;
+            pointer-events: auto;
+            z-index: 20;
+        }
+
+        .d-pad, .action-pad {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            user-select: none;
+            backdrop-filter: blur(4px);
+        }
+
+        .btn:active {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(0.95);
+        }
+        
+        .location-badge {
+            background: rgba(220, 38, 38, 0.9); /* Red */
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border-left: 4px solid #ffffff; /* Snow White */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        
+        .score-badge {
+            background: rgba(22, 101, 52, 0.9); /* Green */
+            color: #fbbf24; /* Gold text */
+            padding: 8px 12px;
+            border-radius: 4px;
+            border-right: 4px solid #dc2626; /* Red border */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-align: right;
+        }
+
+        .warning-text {
+            color: #fca5a5; /* Light Red */
+            text-shadow: 2px 2px 0 #000;
+            display: none;
+            font-size: 12px;
+            margin-top: 5px;
+            text-align: right;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        
+        #cityInput {
+            border: 4px solid #dc2626;
+            color: #166534;
+            background: #f0fdf4;
+        }
+        #cityInput:focus {
+            border-color: #16a34a;
+        }
+        
+        .game-btn {
+            background-color: #16a34a; /* Green Button */
+            border-bottom: 4px solid #14532d;
+            color: white;
+        }
+        .game-btn:active {
+            border-bottom: 0;
+            margin-top: 4px;
+        }
+        
+        .restart-btn {
+            background-color: #dc2626; /* Red Button */
+            border-bottom: 4px solid #7f1d1d;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Start Screen -->
+    <div id="startScreen">
+        <div class="snow-bg"></div>
+        <h1 class="text-3xl md:text-5xl mb-8 text-center px-4 font-bold tracking-wider">
+            GTA<br>
+            <span class="text-xl md:text-3xl text-white" style="text-shadow: 2px 2px 0 #dc2626;">GIFT THEFT AUTO</span>
+        </h1>
+        
+        <div class="bg-white bg-opacity-10 p-6 md:p-8 rounded-xl border-4 border-white backdrop-blur-sm text-center max-w-md w-11/12 shadow-2xl relative">
+            <!-- Decorative Bow -->
+            <div class="absolute -top-6 left-1/2 transform -translate-x-1/2 text-4xl">🎀</div>
+            
+            <p class="mb-4 text-xs text-white drop-shadow-md">SELECT DELIVERY ZONE</p>
+            <input type="text" id="cityInput" placeholder="CITY NAME" 
+                   class="w-full p-4 text-center text-lg md:text-xl outline-none mb-6 font-mono uppercase rounded"
+                   value="COPENHAGEN">
+            
+            <button id="startBtn" class="game-btn w-full font-bold py-4 px-4 rounded transition-all text-sm md:text-base">
+                START SLEIGH ENGINE
+            </button>
+            <p id="loadingText" class="mt-4 text-xs text-green-300 hidden animate-pulse">LOADING MAP DATA...</p>
+            <p id="errorText" class="mt-4 text-xs text-red-400 hidden">TARGET NOT FOUND</p>
+        </div>
+        <div class="mt-8 text-[10px] text-gray-400">IMAGERY: ESRI WORLD SATELLITE</div>
+    </div>
+
+    <!-- End Screen -->
+    <div id="endScreen" style="display:none;">
+        <div class="snow-bg"></div>
+        <h1 class="text-3xl md:text-5xl mb-8 text-center px-4 font-bold tracking-wider" style="color: #4ade80; text-shadow: 3px 3px 0 #064e3b;">
+            MISSION COMPLETE!
+        </h1>
+        
+        <div class="bg-white bg-opacity-10 p-6 md:p-8 rounded-xl border-4 border-white backdrop-blur-sm text-center max-w-md w-11/12 shadow-2xl">
+            <p class="mb-4 text-lg text-white drop-shadow-md">YOU SAVED CHRISTMAS!</p>
+            <p class="mb-8 text-yellow-300 text-sm">3/3 GIFTS DELIVERED</p>
+            
+            <button id="restartBtn" class="restart-btn w-full font-bold py-4 px-4 rounded transition-all text-sm md:text-base">
+                DELIVER MORE GIFTS
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI Layer -->
+    <div class="ui-overlay flex flex-col justify-between p-4" id="gameUI" style="display:none;">
+        <!-- Top Bar -->
+        <div class="flex justify-between w-full">
+            <div class="location-badge">
+                <div class="text-[10px] text-white opacity-80 mb-1">ZONE</div>
+                <div class="text-xs" id="locationName">UNKNOWN</div>
+            </div>
+            
+            <div class="score-badge">
+                <div class="text-[10px] text-white opacity-80 mb-1">GIFTS STOLEN</div>
+                <div class="text-xl" id="scoreDisplay">0</div>
+            </div>
+        </div>
+        
+        <!-- Bottom Bar (Speed) -->
+        <div class="flex justify-end w-full mt-auto">
+             <div class="text-right">
+                <div class="location-badge inline-block" style="background: rgba(0,0,0,0.6); border-left: none; border-bottom: 4px solid #fff;">
+                    <div class="text-[10px] text-gray-300 mb-1">SPEED</div>
+                    <div class="text-xl"><span id="speedDisplay">0</span> <span class="text-xs">KM/H</span></div>
+                </div>
+                <div id="collisionWarning" class="warning-text">⚠ STUCK? PRESS SPACE</div>
+            </div>
+        </div>
+
+        <div id="centerMessage" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-500">
+            <div class="bg-black bg-opacity-80 p-6 rounded border-4 border-red-600 text-center text-white">
+                <h1 class="text-xl mb-2 text-green-400">WELCOME</h1>
+            </div>
+        </div>
+    </div>
+
+    <!-- Touch Controls -->
+    <div class="touch-controls" id="touchControls">
+        <div class="d-pad">
+            <div class="btn" id="btnLeft">←</div>
+            <div class="btn" id="btnRight">→</div>
+        </div>
+        <div class="action-pad">
+            <div class="btn bg-red-600 bg-opacity-40 border-red-400" id="btnBrake">S</div>
+            <div class="btn bg-green-600 bg-opacity-40 border-green-400" id="btnGas">W</div>
+        </div>
+    </div>
+
+<script>
+/**
+ * ENGINE CONFIG
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+// Collision Probe (Hidden Canvas)
+const collisionCanvas = document.createElement('canvas');
+collisionCanvas.width = 1;
+collisionCanvas.height = 1;
+const collisionCtx = collisionCanvas.getContext('2d', { willReadFrequently: true });
+
+// Defaults
+let CURRENT_LAT = 55.676098;
+let CURRENT_LON = 12.568337;
+let ZOOM_LEVEL = 19; 
+const TILE_SIZE = 256;
+const VISUAL_ZOOM = 2.5; 
+
+// Game State
+let isGameRunning = false;
+let isSpawningCar = false;
+let carSpawnTimer = 0;
+let carSpawnAttempts = 0;
+let spawnOriginX = 0;
+let spawnOriginY = 0;
+
+// Mission State
+const mission = {
+    active: false,
+    state: 'pickup', // 'pickup' or 'deliver'
+    x: 0,
+    y: 0,
+    dist: 0,
+    angle: 0,
+    isSearching: false, 
+    score: 0
+};
+
+// Input State
+const keys = {
+    ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+    w: false, a: false, s: false, d: false, " ": false
+};
+
+// Game Objects
+const camera = { x: 0, y: 0 };
+const car = {
+    x: 0, 
+    y: 0,
+    // Add previous state for interpolation
+    prevX: 0,
+    prevY: 0,
+    prevAngle: -Math.PI / 2,
+    
+    width: 20,
+    height: 38,
+    angle: -Math.PI / 2,
+    speed: 0,
+    maxSpeed: 8,
+    acceleration: 0.2,
+    friction: 0.96,
+    turnSpeed: 0.05,
+    driftFactor: 0.94,
+    velocity: { x: 0, y: 0 },
+    skidMarks: [],
+    lastSafeX: 0,
+    lastSafeY: 0,
+    isColliding: false,
+    collisionCounter: 0
+};
+
+// Snowflakes
+const snowflakes = [];
+
+const tileCache = {};
+const collisionTileCache = {};
+let startTileX = 0;
+let startTileY = 0;
+
+/**
+ * START SCREEN LOGIC
+ */
+const startBtn = document.getElementById('startBtn');
+const restartBtn = document.getElementById('restartBtn');
+const cityInput = document.getElementById('cityInput');
+const loadingText = document.getElementById('loadingText');
+const errorText = document.getElementById('errorText');
+
+startBtn.addEventListener('click', () => {
+    const city = cityInput.value.trim();
+    if (!city) return;
+    
+    loadingText.style.display = 'block';
+    errorText.style.display = 'none';
+    startBtn.disabled = true;
+    startBtn.style.opacity = '0.5';
+
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                CURRENT_LAT = parseFloat(data[0].lat);
+                CURRENT_LON = parseFloat(data[0].lon);
+                document.getElementById('locationName').innerText = data[0].name.substring(0, 15).toUpperCase();
+                startGame();
+            } else {
+                throw new Error("City not found");
+            }
+        })
+        .catch(err => {
+            loadingText.style.display = 'none';
+            errorText.style.display = 'block';
+            startBtn.disabled = false;
+            startBtn.style.opacity = '1';
+        });
+});
+
+restartBtn.addEventListener('click', () => {
+    document.getElementById('endScreen').style.display = 'none';
+    document.getElementById('gameUI').style.display = 'flex';
+    
+    mission.score = 0;
+    document.getElementById('scoreDisplay').innerText = "0";
+    
+    isGameRunning = true;
+    mission.state = 'pickup';
+    
+    // Check controls if mobile
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+        document.getElementById('touchControls').style.display = 'flex';
+    }
+    
+    spawnMissionTarget();
+    showMessage("NEXT BATCH READY!");
+});
+
+cityInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') startBtn.click();
+});
+
+/**
+ * MATH HELPERS
+ */
+function long2tile(lon, zoom) { return (lon + 180) / 360 * Math.pow(2, zoom); }
+function lat2tile(lat, zoom) { return (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom); }
+
+function updateWorldOrigin() {
+    startTileX = long2tile(CURRENT_LON, ZOOM_LEVEL) * TILE_SIZE;
+    startTileY = lat2tile(CURRENT_LAT, ZOOM_LEVEL) * TILE_SIZE;
+}
+
+/**
+ * INIT GAME
+ */
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initSnow();
+}
+
+function initSnow() {
+    snowflakes.length = 0;
+    for(let i=0; i<150; i++) {
+        snowflakes.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            r: Math.random() * 2 + 1,
+            speed: Math.random() * 2 + 1,
+            sway: Math.random() * 0.1
+        });
+    }
+}
+
+function startGame() {
+    updateWorldOrigin();
+    
+    document.getElementById('startScreen').style.display = 'none';
+    document.getElementById('gameUI').style.display = 'flex';
+    
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('keydown', e => handleKey(e, true));
+    window.addEventListener('keyup', e => handleKey(e, false));
+    setupTouchControls();
+    
+    // Randomize Start Position
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * 3000;
+    spawnOriginX = Math.cos(angle) * dist;
+    spawnOriginY = Math.sin(angle) * dist;
+    
+    car.x = spawnOriginX;
+    car.y = spawnOriginY;
+    // Reset prev values to avoid interpolation glitch on start
+    car.prevX = car.x;
+    car.prevY = car.y;
+    car.prevAngle = car.angle;
+    
+    camera.x = car.x;
+    camera.y = car.y;
+    car.lastSafeX = car.x;
+    car.lastSafeY = car.y;
+    
+    isGameRunning = true;
+    isSpawningCar = true;
+    carSpawnAttempts = 0;
+    carSpawnTimer = 0;
+    
+    mission.active = false;
+    mission.isSearching = false;
+    mission.score = 0;
+    
+    const warn = document.getElementById('collisionWarning');
+    warn.onclick = () => { performRespawn(); };
+    warn.ontouchstart = (e) => { e.preventDefault(); performRespawn(); }
+    
+    showMessage("SANTA IS WATCHING...");
+    requestAnimationFrame(gameLoop);
+}
+
+function handleKey(e, state) {
+    if (keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) {
+        // Prevent scrolling for Space/Arrows
+        if (state && (e.key === " " || e.key.startsWith("Arrow"))) {
+            e.preventDefault();
+        }
+        keys[e.key] = state;
+        keys[e.key.toLowerCase()] = state;
+    }
+}
+
+function setupTouchControls() {
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+        document.getElementById('touchControls').style.display = 'flex';
+    }
+    const bindTouch = (id, key) => {
+        const btn = document.getElementById(id);
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[key] = false; });
+    };
+    bindTouch('btnLeft', 'ArrowLeft');
+    bindTouch('btnRight', 'ArrowRight');
+    bindTouch('btnGas', 'ArrowUp');
+    bindTouch('btnBrake', 'ArrowDown');
+}
+
+/**
+ * PHYSICS & COLLISION
+ */
+function isTileLoaded(x, y) {
+    const globalX = x + startTileX;
+    const globalY = y + startTileY;
+    const tileX = Math.floor(globalX / TILE_SIZE);
+    const tileY = Math.floor(globalY / TILE_SIZE);
+    const key = `osm_${tileX}_${tileY}`;
+    return collisionTileCache[key] && collisionTileCache[key].loaded;
+}
+
+function getMapPixel(x, y) {
+    const globalX = x + startTileX;
+    const globalY = y + startTileY;
+    
+    const tileX = Math.floor(globalX / TILE_SIZE);
+    const tileY = Math.floor(globalY / TILE_SIZE);
+    const localX = Math.floor(globalX % TILE_SIZE);
+    const localY = Math.floor(globalY % TILE_SIZE);
+    
+    const key = `osm_${tileX}_${tileY}`;
+    
+    if (!collisionTileCache[key]) {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.src = `https://tile.openstreetmap.org/${ZOOM_LEVEL}/${tileX}/${tileY}.png`;
+        img.loaded = false;
+        img.onload = () => { img.loaded = true; };
+        collisionTileCache[key] = img;
+        return null;
+    }
+
+    const img = collisionTileCache[key];
+    if (!img.loaded) return null;
+
+    collisionCtx.clearRect(0, 0, 1, 1);
+    collisionCtx.drawImage(img, localX, localY, 1, 1, 0, 0, 1, 1);
+    const p = collisionCtx.getImageData(0, 0, 1, 1).data;
+    return { r: p[0], g: p[1], b: p[2] };
+}
+
+function isObstacleColor(r, g, b) {
+    if (b > r + 30 && b > g + 10) return true; // Water
+
+    const diff = (c1, c2, c3) => Math.abs(r - c1) + Math.abs(g - c2) + Math.abs(b - c3);
+    
+    if (diff(217, 208, 201) < 30) return true; // Beige Building
+    if (diff(240, 240, 216) < 20) return true; // Schools
+    if (diff(253, 241, 215) < 20) return true; // Hospital
+    if (diff(242, 218, 223) < 20) return true; // Commercial
+    if (diff(182, 181, 145) < 30) return true; // Construction
+    
+    return false;
+}
+
+function checkIsBigRoad(x, y) {
+    const p = getMapPixel(x, y);
+    if (!p) return false;
+    const r = p.r, g = p.g, b = p.b;
+
+    // Detect Major Roads (Yellow/Orange/Pink in OSM Standard)
+    const isYellowOrOrange = (r > 230 && g > 200 && b < 190);
+    const isPinkish = (r > 220 && g < 180 && b < 180);
+
+    return isYellowOrOrange || isPinkish;
+}
+
+function checkBuildingCollision(x, y) {
+    const center = getMapPixel(x, y);
+    if (!center) return false; 
+    
+    // Sampling Radius & Threshold
+    // We check a 3x3 grid spread out to cover the car's footprint
+    let hitCount = 0;
+    const spread = 6; 
+    
+    for (let dy = -spread; dy <= spread; dy += spread) {
+        for (let dx = -spread; dx <= spread; dx += spread) {
+            const p = getMapPixel(x + dx, y + dy);
+            if (p && isObstacleColor(p.r, p.g, p.b)) {
+                hitCount++;
+            }
+        }
+    }
+
+    // 9 points total. >= 4 is a solid hit.
+    return hitCount >= 4;
+}
+
+function spawnMissionTarget() {
+    mission.isSearching = true;
+}
+
+function performRespawn() {
+    // Try to recover to the last known safe position
+    let recoverX = car.lastSafeX;
+    let recoverY = car.lastSafeY;
+    
+    // If that position is now known to be bad (e.g. tile loaded late), search nearby
+    if (checkBuildingCollision(recoverX, recoverY)) {
+        let found = false;
+        // Search in increasing radius
+        for(let r=30; r<=150; r+=30) {
+            for(let a=0; a<Math.PI*2; a+=Math.PI/4) {
+                const tx = recoverX + Math.cos(a)*r;
+                const ty = recoverY + Math.sin(a)*r;
+                if (!checkBuildingCollision(tx, ty)) {
+                    recoverX = tx;
+                    recoverY = ty;
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+        
+        // Absolute fallback if still inside a wall
+        if (!found) {
+             recoverX += (Math.random() - 0.5) * 100;
+             recoverY += (Math.random() - 0.5) * 100;
+        }
+    }
+
+    car.x = recoverX;
+    car.y = recoverY;
+    // Snap interpolation to new position immediately
+    car.prevX = recoverX;
+    car.prevY = recoverY;
+    
+    car.speed = 0;
+    car.velocity.x = 0;
+    car.velocity.y = 0;
+    car.isColliding = false;
+    
+    document.getElementById('collisionWarning').style.display = 'none';
+}
+
+function updatePhysics() {
+    if (!isGameRunning) return;
+
+    // SAVE PREVIOUS STATE FOR INTERPOLATION
+    car.prevX = car.x;
+    car.prevY = car.y;
+    car.prevAngle = car.angle;
+
+    // --- UNSTUCK LOGIC ---
+    if (keys[" "]) {
+        performRespawn();
+        keys[" "] = false; // Debounce
+        return;
+    }
+
+    // --- CAR SPAWN LOGIC ---
+    if (isSpawningCar) {
+        carSpawnTimer++;
+        checkBuildingCollision(car.x, car.y); // Force load of collision map
+        
+        // Safety timeout
+        if (carSpawnTimer > 300) { 
+            isSpawningCar = false; 
+            showMessage("MANUAL OVERRIDE"); 
+            mission.state = 'pickup'; 
+            spawnMissionTarget(); 
+            // Sync interpolation
+            car.prevX = car.x; car.prevY = car.y;
+            return; 
+        }
+
+        if (isTileLoaded(car.x, car.y)) {
+            const isUnsafe = checkBuildingCollision(car.x, car.y);
+            const isBigRoad = checkIsBigRoad(car.x, car.y);
+            
+            // Priority: Big Road > Any Road > Force
+            // First 50 attempts: Must be a Big Road
+            // After 50 attempts: Any safe spot (Residential road)
+            let isGoodSpot = false;
+            
+            if (!isUnsafe) {
+                if (carSpawnAttempts < 50) {
+                    if (isBigRoad) isGoodSpot = true;
+                } else {
+                    isGoodSpot = true;
+                }
+            }
+
+            if (!isGoodSpot) {
+                carSpawnAttempts++;
+                // Search spiral
+                const angle = carSpawnAttempts * 0.5;
+                const radius = 20 + (carSpawnAttempts * 15); // Wider search radius
+                car.x = spawnOriginX + Math.cos(angle) * radius;
+                car.y = spawnOriginY + Math.sin(angle) * radius;
+                // Sync to prevent flying effect
+                car.prevX = car.x; car.prevY = car.y;
+                
+                // If we really can't find anything after 150 tries, force it
+                if (carSpawnAttempts > 150) { 
+                    isSpawningCar = false; 
+                    showMessage("FORCE DEPLOY"); 
+                    mission.state = 'pickup'; 
+                    spawnMissionTarget(); 
+                }
+            } else {
+                // FOUND GOOD SPOT
+                isSpawningCar = false;
+                car.lastSafeX = car.x;
+                car.lastSafeY = car.y;
+                showMessage(carSpawnAttempts < 50 ? "MAIN ROAD SECURE" : "DROP ZONE SECURE");
+                mission.state = 'pickup';
+                spawnMissionTarget();
+            }
+        }
+        return;
+    }
+
+    // --- MISSION SPAWN LOGIC ---
+    if (mission.isSearching) {
+        for(let i=0; i<5; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 600 + Math.random() * 800;
+            const tx = car.x + Math.cos(angle) * dist;
+            const ty = car.y + Math.sin(angle) * dist;
+            
+            checkBuildingCollision(tx, ty); 
+            
+            if (isTileLoaded(tx, ty)) {
+                if (!checkBuildingCollision(tx, ty)) {
+                    mission.x = tx;
+                    mission.y = ty;
+                    mission.active = true;
+                    mission.isSearching = false;
+                    showMessage(mission.state === 'pickup' ? "GIFT SPOTTED!" : "DELIVER GIFT!");
+                    break;
+                }
+            }
+        }
+    }
+
+    // --- MISSION LOGIC ---
+    if (mission.active) {
+        const dx = mission.x - car.x;
+        const dy = mission.y - car.y;
+        mission.dist = Math.sqrt(dx*dx + dy*dy);
+        // We don't update mission.angle here anymore for drawing, 
+        // to prevent jitter. We calculate it in draw() relative to interpolated car.
+        
+        if (mission.dist < 50) {
+            if (mission.state === 'pickup') {
+                mission.state = 'deliver';
+                mission.active = false;
+                showMessage("GIFT STOLEN!");
+                spawnMissionTarget();
+            } else {
+                mission.state = 'pickup';
+                mission.active = false;
+                mission.score++;
+                document.getElementById('scoreDisplay').innerText = mission.score;
+                
+                if (mission.score >= 3) {
+                    isGameRunning = false;
+                    document.getElementById('gameUI').style.display = 'none';
+                    document.getElementById('touchControls').style.display = 'none';
+                    document.getElementById('endScreen').style.display = 'flex';
+                } else {
+                    showMessage("DELIVERED!");
+                    spawnMissionTarget();
+                }
+            }
+        }
+    }
+
+    // --- CAR PHYSICS ---
+    if (keys.ArrowUp || keys.w) car.speed += car.acceleration;
+    else if (keys.ArrowDown || keys.s) car.speed -= car.acceleration;
+    else car.speed *= 0.99; 
+
+    if (car.speed > car.maxSpeed) car.speed = car.maxSpeed;
+    if (car.speed < -car.maxSpeed / 2) car.speed = -car.maxSpeed / 2;
+
+    if (Math.abs(car.speed) > 0.1) {
+        const reverse = car.speed < 0 ? -1 : 1;
+        if (keys.ArrowLeft || keys.a) car.angle -= car.turnSpeed * reverse;
+        if (keys.ArrowRight || keys.d) car.angle += car.turnSpeed * reverse;
+    }
+
+    car.velocity.x = car.velocity.x * car.driftFactor + Math.cos(car.angle) * car.speed * (1 - car.driftFactor);
+    car.velocity.y = car.velocity.y * car.driftFactor + Math.sin(car.angle) * car.speed * (1 - car.driftFactor);
+    car.velocity.x *= car.friction;
+    car.velocity.y *= car.friction;
+
+    const nextX = car.x + car.velocity.x;
+    const nextY = car.y + car.velocity.y;
+    
+    if (checkBuildingCollision(car.x, car.y)) {
+        performRespawn();
+    } else {
+        let potentialCollision = false;
+        if (Math.abs(car.speed) > 0.5) { 
+            if (checkBuildingCollision(nextX, nextY)) potentialCollision = true;
+        }
+
+        if (potentialCollision) {
+            car.collisionCounter++;
+            if (car.collisionCounter > 5) { 
+                car.speed *= -0.5;
+                car.velocity.x *= -0.5;
+                car.velocity.y *= -0.5;
+                car.isColliding = true;
+                document.getElementById('collisionWarning').style.display = 'block';
+                
+                car.x = car.lastSafeX;
+                car.y = car.lastSafeY;
+                // Sync prev to avoid visual jitter on crash reset
+                car.prevX = car.x;
+                car.prevY = car.y;
+            }
+        } else {
+            car.collisionCounter = 0;
+            car.x = nextX;
+            car.y = nextY;
+            car.isColliding = false;
+            document.getElementById('collisionWarning').style.display = 'none';
+            
+            if (isTileLoaded(car.x, car.y) && !checkBuildingCollision(car.x, car.y)) {
+                car.lastSafeX = car.x;
+                car.lastSafeY = car.y;
+            }
+        }
+    }
+
+    if (Math.abs(car.speed) > 2 && Math.abs(keys.ArrowLeft || keys.a || keys.ArrowRight || keys.d)) {
+         addSkidMark(0.3);
+    }
+}
+
+function updateSnow() {
+    for(let s of snowflakes) {
+        s.y += s.speed;
+        s.x += Math.sin(s.y / 50) * s.sway; 
+        
+        if (s.y > canvas.height) {
+            s.y = -5;
+            s.x = Math.random() * canvas.width;
+        }
+    }
+}
+
+function drawSnow() {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+    ctx.beginPath();
+    for(let s of snowflakes) {
+        ctx.moveTo(s.x, s.y);
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    }
+    ctx.fill();
+}
+
+function addSkidMark(opacity) {
+    if (Math.random() > 0.6) return;
+    const perpAngle = car.angle + Math.PI / 2;
+    const offsetX = Math.cos(perpAngle) * (car.width / 2);
+    const offsetY = Math.sin(perpAngle) * (car.width / 2);
+    car.skidMarks.push({ x: car.x - offsetX, y: car.y - offsetY, life: 1.0, opacity: opacity });
+    car.skidMarks.push({ x: car.x + offsetX, y: car.y + offsetY, life: 1.0, opacity: opacity });
+}
+
+function showMessage(text) {
+    const msg = document.getElementById('centerMessage');
+    msg.querySelector('h1').innerText = text;
+    msg.style.opacity = '1';
+    setTimeout(() => { msg.style.opacity = '0'; }, 3000);
+}
+
+/**
+ * RENDER
+ */
+function draw(alpha) {
+    if (!isGameRunning) return;
+
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // INTERPOLATION CALCULATION
+    // alpha is the normalized time between frames (0.0 to 1.0)
+    // We blend previous physics state with current state
+    const ix = car.prevX + (car.x - car.prevX) * alpha;
+    const iy = car.prevY + (car.y - car.prevY) * alpha;
+    const iAngle = car.prevAngle + (car.angle - car.prevAngle) * alpha;
+
+    // Camera tracks the INTERPOLATED position for smoothness
+    camera.x += (ix - camera.x) * 0.3;
+    camera.y += (iy - camera.y) * 0.3;
+
+    ctx.save();
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    
+    ctx.translate(cx, cy);
+    ctx.scale(VISUAL_ZOOM, VISUAL_ZOOM); 
+    ctx.translate(-camera.x, -camera.y);
+    
+    drawMapTiles();
+    
+    if (isSpawningCar && carSpawnAttempts > 0) {
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2 / VISUAL_ZOOM;
+        ctx.beginPath();
+        const radius = 20 + (carSpawnAttempts * 10);
+        ctx.arc(spawnOriginX, spawnOriginY, radius, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    drawSkidMarks();
+    drawMissionObjective(); 
+    
+    ctx.restore();
+
+    // Calculate screen position using Interpolated coordinates
+    const screenCarX = (ix - camera.x) * VISUAL_ZOOM + cx;
+    const screenCarY = (iy - camera.y) * VISUAL_ZOOM + cy;
+    
+    drawCarAtScreenPos(screenCarX, screenCarY, iAngle);
+    drawGuidanceArrow(screenCarX, screenCarY, ix, iy);
+    
+    drawSnow();
+
+    document.getElementById('speedDisplay').innerText = Math.abs(Math.round(car.speed * 10));
+}
+
+function drawMapTiles() {
+    const visibleWidth = canvas.width / VISUAL_ZOOM;
+    const visibleHeight = canvas.height / VISUAL_ZOOM;
+
+    const viewportLeft = camera.x - visibleWidth / 2;
+    const viewportTop = camera.y - visibleHeight / 2;
+    const viewportRight = camera.x + visibleWidth / 2;
+    const viewportBottom = camera.y + visibleHeight / 2;
+
+    const minTileX = Math.floor((startTileX + viewportLeft) / TILE_SIZE);
+    const minTileY = Math.floor((startTileY + viewportTop) / TILE_SIZE);
+    const maxTileX = Math.floor((startTileX + viewportRight) / TILE_SIZE);
+    const maxTileY = Math.floor((startTileY + viewportBottom) / TILE_SIZE);
+
+    for (let x = minTileX; x <= maxTileX; x++) {
+        for (let y = minTileY; y <= maxTileY; y++) {
+            const tileKey = `sat_${x}_${y}`;
+            const drawX = (x * TILE_SIZE) - startTileX;
+            const drawY = (y * TILE_SIZE) - startTileY;
+
+            if (!tileCache[tileKey]) {
+                const img = new Image();
+                img.crossOrigin = "Anonymous";
+                img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${ZOOM_LEVEL}/${y}/${x}`;
+                img.loaded = false;
+                img.onload = () => { img.loaded = true; };
+                tileCache[tileKey] = img;
+            }
+
+            const img = tileCache[tileKey];
+            if (img.loaded) {
+                ctx.drawImage(img, drawX - 1, drawY - 1, TILE_SIZE + 2, TILE_SIZE + 2);
+            } else {
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
+            }
+        }
+    }
+}
+
+function drawMissionObjective() {
+    if (!mission.active) return;
+    
+    if (mission.state === 'pickup') {
+        // Draw Gift Box
+        ctx.fillStyle = '#dc2626'; // Red Box
+        ctx.fillRect(mission.x - 12, mission.y - 12, 24, 24);
+        
+        // Gold Ribbon
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(mission.x - 4, mission.y - 12, 8, 24); // Vertical
+        ctx.fillRect(mission.x - 12, mission.y - 4, 24, 8); // Horizontal
+        
+        // Outline
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(mission.x - 12, mission.y - 12, 24, 24);
+        
+        // Glow
+        ctx.beginPath();
+        ctx.strokeStyle = `rgba(251, 191, 36, ${0.5 + Math.sin(Date.now()/200)*0.3})`;
+        ctx.arc(mission.x, mission.y, 35, 0, Math.PI*2);
+        ctx.stroke();
+        
+    } else {
+        // Drop Zone - Waiting Child
+        // Pulse ring
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(34, 197, 94, 0.3)`; 
+        ctx.arc(mission.x, mission.y, 30, 0, Math.PI*2);
+        ctx.fill();
+
+        // Child Character
+        const waveOffset = Math.sin(Date.now() / 150) * 3; // Waving animation
+
+        // Body (Blue Coat)
+        ctx.fillStyle = '#3b82f6';
+        ctx.fillRect(mission.x - 6, mission.y - 5, 12, 14);
+        
+        // Head (Skin tone)
+        ctx.fillStyle = '#fca5a5';
+        ctx.beginPath();
+        ctx.arc(mission.x, mission.y - 10, 6, 0, Math.PI*2);
+        ctx.fill();
+        
+        // Hat (Red Beanie)
+        ctx.fillStyle = '#dc2626'; 
+        ctx.beginPath();
+        ctx.arc(mission.x, mission.y - 12, 6, Math.PI, 0); // Half circle
+        ctx.fill();
+        // Pom pom
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(mission.x, mission.y - 18, 3, 0, Math.PI*2);
+        ctx.fill();
+
+        // Arms
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        // Left arm (down)
+        ctx.moveTo(mission.x - 6, mission.y - 2);
+        ctx.lineTo(mission.x - 10, mission.y + 5);
+        // Right arm (Waving!)
+        ctx.moveTo(mission.x + 6, mission.y - 2);
+        ctx.lineTo(mission.x + 10, mission.y - 8 + waveOffset);
+        ctx.stroke();
+
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText("WAITING", mission.x, mission.y + 25);
+    }
+}
+
+function drawGuidanceArrow(cx, cy, worldCarX, worldCarY) {
+    if (!mission.active) return;
+    
+    // Calculate angle based on INTERPOLATED car position for smoothness
+    const dx = mission.x - worldCarX;
+    const dy = mission.y - worldCarY;
+    const angle = Math.atan2(dy, dx);
+    const radius = 60; 
+    
+    const ax = cx + Math.cos(angle) * radius;
+    const ay = cy + Math.sin(angle) * radius;
+    
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(angle);
+    
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(-10, 10);
+    ctx.lineTo(-10, -10);
+    ctx.closePath();
+    
+    // Candy Cane colors? Just Red/Green for simplicity
+    ctx.fillStyle = mission.state === 'pickup' ? '#dc2626' : '#22c55e';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    ctx.restore();
+    
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px "Press Start 2P"'; 
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    const tx = cx + Math.cos(angle) * (radius + 30);
+    const ty = cy + Math.sin(angle) * (radius + 30);
+    // Calc distance using interpolated pos
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    ctx.fillText(Math.round(dist / 10) + "m", tx, ty + 5);
+    ctx.shadowBlur = 0;
+}
+
+function drawCarAtScreenPos(x, y, angle) {
+    // 1. Draw Shadow (Fixed Sun Direction)
+    const sunOffsetX = 5;
+    const sunOffsetY = 5;
+
+    ctx.save();
+    ctx.translate(x + sunOffsetX, y + sunOffsetY);
+    ctx.rotate(angle + Math.PI / 2); 
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; 
+    roundRect(ctx, -car.width/2, -car.height/2, car.width, car.height, 5);
+    ctx.fill();
+    ctx.restore();
+
+    // 2. Draw Car Body
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI / 2);
+
+    ctx.fillStyle = '#dc2626'; 
+    roundRect(ctx, -car.width/2, -car.height/2, car.width, car.height, 5);
+    ctx.fill();
+    
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(-2, -car.height/2, 4, car.height);
+
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(-car.width/2 + 2, -car.height/4, car.width - 4, car.height/2);
+
+    ctx.fillStyle = '#ffffcc';
+    ctx.beginPath();
+    ctx.arc(car.width/2 - 4, -car.height/2 + 2, 3, 0, Math.PI*2);
+    ctx.arc(-car.width/2 + 4, -car.height/2 + 2, 3, 0, Math.PI*2);
+    ctx.fill();
+    
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = 'rgba(255, 255, 200, 0.2)';
+    ctx.beginPath();
+    ctx.moveTo(car.width/2 - 4, -car.height/2);
+    ctx.lineTo(80, -200);
+    ctx.lineTo(20, -200);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-car.width/2 + 4, -car.height/2);
+    ctx.lineTo(-80, -200);
+    ctx.lineTo(-20, -200);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+
+    if (keys.ArrowDown || keys.s) {
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#ef4444';
+    } else {
+        ctx.fillStyle = '#7f1d1d';
+        ctx.shadowBlur = 0;
+    }
+    ctx.fillRect(-car.width/2 + 2, car.height/2 - 2, 6, 3);
+    ctx.fillRect(car.width/2 - 8, car.height/2 - 2, 6, 3);
+    ctx.shadowBlur = 0;
+    
+    ctx.restore();
+}
+
+function drawSkidMarks() {
+    ctx.lineWidth = 4 / VISUAL_ZOOM; 
+    for (let i = car.skidMarks.length - 1; i >= 0; i--) {
+        let mark = car.skidMarks[i];
+        ctx.fillStyle = `rgba(255, 255, 255, ${mark.opacity * mark.life * 0.5})`; // Snow tracks (white/grey)
+        ctx.beginPath();
+        ctx.arc(mark.x, mark.y, 1.5, 0, Math.PI*2); 
+        ctx.fill();
+        mark.life -= 0.005;
+        if (mark.life <= 0) car.skidMarks.splice(i, 1);
+    }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+let lastTime = 0;
+let accumulator = 0;
+const TIME_STEP = 1000 / 60; // Fixed 60 FPS physics
+
+function gameLoop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    let deltaTime = timestamp - lastTime;
+    lastTime = timestamp;
+
+    if (deltaTime > 100) deltaTime = 100;
+
+    accumulator += deltaTime;
+
+    while (accumulator >= TIME_STEP) {
+        updatePhysics();
+        updateSnow();
+        accumulator -= TIME_STEP;
+    }
+
+    // Pass the "alpha" (fraction of the current step) for interpolation
+    const alpha = accumulator / TIME_STEP;
+    draw(alpha);
+    requestAnimationFrame(gameLoop);
+}
+
+// init() called by button
+
+</script>
+</body>
+</html>
