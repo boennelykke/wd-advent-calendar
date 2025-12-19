@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rudolph's Adventure</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Arial', sans-serif; user-select: none; }
+        canvas { display: block; }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            color: #FFF;
+            text-shadow: 2px 2px 0 #000;
+            font-weight: bold;
+            font-size: 24px;
+            z-index: 10;
+        }
+        .hud-item { display: flex; flex-direction: column; }
+        .hud-label { color: #FFD700; font-size: 14px; letter-spacing: 1px; }
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 40px;
+            border-radius: 20px;
+            border: 4px solid #FFF;
+            color: white;
+            display: none;
+            z-index: 20;
+        }
+        h1 { font-size: 48px; color: #ff0000; text-shadow: 3px 3px 0 #fff; margin: 0 0 20px 0; font-style: italic; }
+        p { font-size: 20px; color: #fff; margin-bottom: 30px; }
+        #start-btn {
+            background: #d40000;
+            color: white;
+            border: 2px solid white;
+            padding: 15px 30px;
+            font-size: 20px;
+            cursor: pointer;
+            border-radius: 50px;
+            font-weight: bold;
+            box-shadow: 0 4px 0 #8b0000;
+            transition: transform 0.1s;
+            pointer-events: auto;
+        }
+        #start-btn:active { transform: translateY(4px); box-shadow: none; }
+        .controls-hint { font-size: 14px; color: #ddd; margin-top: 10px; }
+        #level-indicator {
+            position: absolute;
+            top: 50%; 
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 80px;
+            color: #FFF;
+            text-shadow: 4px 4px 0 #000;
+            display: none;
+            z-index: 15;
+            font-weight: bold;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer">
+    <div class="hud-item">
+        <span class="hud-label">SCORE</span>
+        <span id="score">0</span>
+    </div>
+    <div class="hud-item" style="align-items: center;">
+        <span class="hud-label">TIME</span>
+        <span id="time">0:00</span>
+    </div>
+    <div class="hud-item" style="align-items: flex-end;">
+        <span class="hud-label">BELLS</span>
+        <span id="rings">0</span>
+    </div>
+</div>
+
+<div id="level-indicator">LEVEL 1</div>
+
+<div id="message-box">
+    <h1 id="msg-title">RUDOLPH'S ADVENTURE</h1>
+    <p id="msg-sub">Collect Bells, Spin Dash, Save Christmas!</p>
+    <button id="start-btn">PLAY</button>
+    <div class="controls-hint">
+        ARROWS/WASD to Move & Jump • SPACE to Jump<br>
+        Hold DOWN/S + SHIFT to Charge Spin Dash
+    </div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // --- Constants ---
+    const TILE_SIZE = 40;
+    const GRAVITY = 0.6;
+    const FRICTION = 0.85;
+    const ACCEL = 0.8;
+    const JUMP_FORCE = -14;
+    const MAX_SPEED = 8;
+    const BOOST_SPEED = 14;
+    const FLIGHT_SPEED = 15; 
+
+    const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2, WIN: 3, RESPAWNING: 4 };
+
+    // --- Game State ---
+    let gameState = STATE.MENU;
+    let currentLevel = 1;
+    let score = 0;
+    let rings = 0;
+    
+    // Checkpoints for level reset
+    let levelStartScore = 0;
+    let levelStartRings = 0;
+
+    let time = 0;
+    let startTime = 0;
+    let frameId;
+    let cameraX = 0;
+
+    // --- Inputs ---
+    const keys = {
+        left: false, right: false, up: false, down: false, jump: false, shift: false
+    };
+
+    // --- Game Objects ---
+    let player = {
+        x: 100, y: 100, w: 30, h: 30,
+        vx: 0, vy: 0,
+        grounded: false,
+        facingRight: true,
+        invincible: 0,
+        shield: false,
+        speedBoost: 0,
+        spindashCharge: 0,
+        isSpindashing: false,
+        flying: false,
+        angle: 0
+    };
+
+    let platforms = [];
+    let enemies = [];
+    let items = [];
+    let particles = [];
+    let floatingTexts = [];
+    let goalX = 0;
+
+    // --- Initialization ---
+    function init() {
+        resize();
+        window.addEventListener('resize', resize);
+        window.addEventListener('keydown', e => handleKey(e, true));
+        window.addEventListener('keyup', e => handleKey(e, false));
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        
+        drawBackground();
+        document.getElementById('message-box').style.display = 'block';
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+
+    function handleKey(e, pressed) {
+        const code = e.code;
+        if (code === 'ArrowLeft' || code === 'KeyA') keys.left = pressed;
+        if (code === 'ArrowRight' || code === 'KeyD') keys.right = pressed;
+        if (code === 'ArrowUp' || code === 'KeyW') keys.up = pressed;
+        if (code === 'ArrowDown' || code === 'KeyS') keys.down = pressed;
+        if (code === 'Space') keys.jump = pressed;
+        if (code === 'ShiftLeft' || code === 'ShiftRight') keys.shift = pressed;
+    }
+
+    function startGame() {
+        if (gameState === STATE.PLAYING) return;
+        
+        // Reset state for new game
+        score = 0;
+        rings = 0;
+        levelStartScore = 0;
+        levelStartRings = 0;
+        
+        currentLevel = 1;
+        startLevel(1);
+        
+        document.getElementById('message-box').style.display = 'none';
+        gameState = STATE.PLAYING;
+        loop();
+    }
+
+    function startLevel(level) {
+        currentLevel = level;
+        time = 0;
+        startTime = Date.now();
+        cameraX = 0;
+        gameState = STATE.PLAYING; 
+        
+        // Restore stats to level start values (handles both fresh start and death reset)
+        score = levelStartScore;
+        rings = levelStartRings;
+
+        const indicator = document.getElementById('level-indicator');
+        let title = `LEVEL ${level}`;
+        if (level === 3) title = "LEVEL 3: SKY HIGH!";
+        if (level === 5) title = "LEVEL 5: PARTY POLE!";
+        
+        indicator.innerText = title;
+        indicator.style.display = 'block';
+        setTimeout(() => { indicator.style.display = 'none'; }, 2000);
+
+        player.x = 100;
+        player.y = canvas.height - 300;
+        player.vx = 0;
+        player.vy = 0;
+        player.grounded = false;
+        player.speedBoost = 0; 
+        player.invincible = 0;
+        player.flying = false;
+        
+        if (level === 3 || level === 5) {
+            player.flying = true;
+            player.y = canvas.height - 400; 
+            createFloatingText(player.x, player.y - 40, "AUTO FLIGHT ENGAGED!", "#00FFFF");
+        }
+        
+        floatingTexts = [];
+        generateLevel(level);
+    }
+
+    function generateLevel(level) {
+        platforms = [];
+        enemies = [];
+        items = [];
+        particles = [];
+
+        let cx = 0;
+        const groundY = canvas.height - 100;
+        const addPlat = (x, y, w, h) => platforms.push({x, y, w, h});
+
+        // --- Common Start Platform ---
+        addPlat(0, groundY, 500, 200);
+        cx = 500;
+
+        if (level === 1) {
+            // LEVEL 1: SNOWY START
+            for(let i=0; i<3; i++) { items.push({x: 200 + i*50, y: groundY - 50, type: 'bell'}); }
+
+            addPlat(cx, groundY - 50, 200, 20); cx += 250;
+            addPlat(cx, groundY - 100, 200, 20); 
+            items.push({x: cx+100, y: groundY-140, type: 'bell'});
+            cx += 250;
+            
+            addPlat(cx, groundY, 800, 200);
+            enemies.push({x: cx + 400, y: groundY - 40, type: 'snowman', vx: -2, startX: cx+400});
+            items.push({x: cx + 600, y: groundY - 40, type: 'shield'});
+            cx += 800;
+
+            for(let i=0; i<10; i++) {
+                let h = Math.sin(i * 0.5) * 40;
+                addPlat(cx + (i*60), groundY + h, 62, 200);
+                items.push({x: cx + (i*60) + 10, y: groundY + h - 50, type: 'bell'});
+            }
+            cx += 600;
+
+        } else if (level === 2) {
+            // LEVEL 2: ROLLING HILLS
+            addPlat(cx, groundY, 1000, 200);
+            items.push({x: cx + 200, y: groundY - 40, type: 'speed'});
+            cx += 500;
+
+            for(let i=0; i<20; i++) {
+                let h = Math.sin(i * 0.3) * 120;
+                addPlat(cx + (i*50), groundY + h - 50, 52, 400);
+                if (i%2===0) items.push({x: cx + (i*50), y: groundY + h - 100, type: 'bell'});
+            }
+            cx += 1000;
+
+            addPlat(cx, groundY - 200, 400, 20);
+            enemies.push({x: cx + 200, y: groundY - 240, type: 'snowman', vx: -2, startX: cx+200});
+            addPlat(cx, groundY, 400, 200); 
+            cx += 500;
+
+        } else if (level === 3) {
+            // LEVEL 3: HYPER FLIGHT SKY (Shorter & Varied)
+            cx = 500;
+            let skyLen = 11000; 
+            
+            // Section 1: Warm up waves
+            for(let i=0; i<40; i++) {
+                let h = Math.sin(i * 0.1) * 200 + 350; 
+                items.push({x: cx + i*80, y: groundY - h, type: 'bell'});
+            }
+
+            // Section 2: Static Cloud Blockade (Static Snowmen)
+            for(let i=40; i<80; i++) {
+                let h = 300 + Math.random() * 200;
+                if (i % 3 === 0) {
+                    enemies.push({
+                        x: cx + i*80,
+                        y: groundY - h,
+                        type: 'flying_snowman',
+                        vx: 0, // Stationary
+                        startX: cx + i*80,
+                        startY: groundY - h,
+                        offset: 0
+                    });
+                } else {
+                    items.push({x: cx + i*80, y: groundY - h, type: 'bell'});
+                }
+            }
+
+            // Section 3: Moving Hazards
+            for(let i=80; i<130; i++) {
+                let h = Math.sin(i * 0.1) * 200 + 350;
+                items.push({x: cx + i*80, y: groundY - h, type: 'bell'});
+                
+                if (i % 4 === 0) { 
+                    enemies.push({
+                        x: cx + i*80,
+                        y: groundY - h,
+                        type: 'flying_snowman',
+                        vx: -4, // Faster enemies
+                        startX: cx + i*80,
+                        startY: groundY - h,
+                        offset: i
+                    });
+                }
+            }
+            
+            cx += skyLen;
+            addPlat(cx, groundY, 600, 200);
+
+        } else if (level === 4) {
+            // LEVEL 4: VARIATED SPEED DASH
+            items.push({x: cx, y: groundY - 50, type: 'speed'});
+            
+            for(let i=0; i<10; i++) {
+                let yOff = (i%2 === 0) ? 0 : -50;
+                addPlat(cx, groundY + yOff, 300, 200);
+                items.push({x: cx + 150, y: groundY + yOff - 50, type: 'bell'});
+                enemies.push({x: cx + 200, y: groundY + yOff - 40, type: 'snowman', vx: -1, startX: cx+200});
+                cx += 350; 
+            }
+
+            items.push({x: cx, y: groundY - 150, type: 'speed'});
+            for(let i=0; i<5; i++) {
+                addPlat(cx, groundY - (i*20), 200, 200);
+                cx += 400; 
+            }
+
+            // Section 3: Stairs (Easier - Wider platforms, safer spikes)
+            for(let i=0; i<8; i++) {
+                addPlat(cx, groundY - (i*60), 200, 500); // Width 200
+                // Spike pushed to end, plenty of landing room
+                enemies.push({x: cx + 150, y: groundY - (i*60) - 40, type: 'spike'});
+                cx += 250;
+            }
+            
+            addPlat(cx, groundY - 480, 500, 200);
+            cx += 500;
+
+        } else if (level === 5) {
+            // LEVEL 5: RETURN TO SANTA (Flying & Crazy)
+            cx = 500;
+            let flightLen = 4000; 
+            
+            for(let i=0; i<50; i++) {
+                let h = Math.sin(i * 0.2) * 250 + 350; 
+                items.push({x: cx + i*80, y: groundY - h, type: 'bell'});
+                
+                if (i % 3 === 0) {
+                     enemies.push({
+                         x: cx + i*80, 
+                         y: groundY - h + 50, 
+                         type: 'party_snowman', 
+                         vx: 0, 
+                         startX: cx + i*80, 
+                         startY: groundY - h + 50, 
+                         offset: i,
+                         angle: 0
+                     });
+                }
+            }
+            cx += flightLen;
+            
+            addPlat(cx, groundY, 800, 200);
+            items.push({x: cx + 400, y: groundY - 100, type: 'santa_house'});
+        }
+
+        // --- Goal Area ---
+        if (level !== 5) {
+            addPlat(cx, groundY, 500, 200);
+            goalX = cx + 250;
+            items.push({x: goalX, y: groundY - 150, type: 'goal'});
+        }
+    }
+
+    // --- Main Loop ---
+    function loop() {
+        update();
+        draw();
+        
+        if (gameState === STATE.PLAYING || gameState === STATE.RESPAWNING) {
+            frameId = requestAnimationFrame(loop);
+        }
+    }
+
+    // --- Update Logic ---
+    function update() {
+        if (gameState === STATE.RESPAWNING) return;
+
+        const now = Date.now();
+        time = (now - startTime) / 1000;
+        document.getElementById('time').innerText = formatTime(time);
+
+        // --- Player Physics ---
+        if (player.flying) {
+            player.vx = FLIGHT_SPEED; 
+            
+            if (keys.up) player.vy -= 1.5;
+            if (keys.down) player.vy += 1.5;
+            
+            player.vy *= 0.9;
+            player.x += player.vx;
+            player.y += player.vy;
+            
+            if (player.y < -500) { player.y = -500; player.vy = 0; }
+            if (player.y > canvas.height + 50) { player.y = canvas.height + 50; }
+
+            createParticle(player.x - 20, player.y, '#FFD700');
+            createParticle(player.x - 20, player.y + 10, '#FF4444');
+
+        } else {
+            if (player.grounded && keys.down && keys.shift) {
+                player.spindashCharge += 0.5;
+                if (player.spindashCharge > 15) player.spindashCharge = 15;
+                player.vx = 0;
+                if (Math.random() < 0.5) createParticle(player.x, player.y, '#FFF');
+            } else if (player.spindashCharge > 0) {
+                let dir = player.facingRight ? 1 : -1;
+                player.vx = dir * (10 + player.spindashCharge);
+                player.spindashCharge = 0;
+                player.isSpindashing = true;
+                for(let i=0; i<10; i++) createParticle(player.x, player.y + 15, '#FFF');
+            }
+
+            if (player.spindashCharge === 0) {
+                let limit = player.speedBoost > 0 ? BOOST_SPEED : MAX_SPEED;
+                
+                if (keys.right) {
+                    player.vx += ACCEL;
+                    player.facingRight = true;
+                } else if (keys.left) {
+                    player.vx -= ACCEL;
+                    player.facingRight = false;
+                } else {
+                    player.vx *= FRICTION;
+                }
+                
+                if (!player.isSpindashing) {
+                    if (player.vx > limit) player.vx = limit;
+                    if (player.vx < -limit) player.vx = -limit;
+                } else {
+                    player.vx *= 0.98;
+                    if (Math.abs(player.vx) < 4) player.isSpindashing = false;
+                }
+            }
+
+            if ((keys.jump || keys.up) && player.grounded) {
+                player.vy = JUMP_FORCE;
+                player.grounded = false;
+                player.isSpindashing = false;
+            }
+
+            player.vy += GRAVITY;
+            player.x += player.vx;
+            player.y += player.vy;
+
+            player.grounded = false;
+            for (let p of platforms) {
+                if (player.x + player.w/2 > p.x && 
+                    player.x - player.w/2 < p.x + p.w &&
+                    player.y + player.h/2 > p.y &&
+                    player.y - player.h/2 < p.y + p.h) {
+                    
+                    let overlapY = (player.h/2 + p.h/2) - Math.abs(player.y - (p.y + p.h/2));
+                    let overlapX = (player.w/2 + p.w/2) - Math.abs(player.x - (p.x + p.w/2));
+
+                    if (overlapY < overlapX) {
+                        if (player.vy > 0) { 
+                            player.y -= overlapY;
+                            player.vy = 0;
+                            player.grounded = true;
+                        } else { 
+                            player.y += overlapY;
+                            player.vy = 0;
+                        }
+                    } else {
+                        if (player.vx > 0) player.x -= overlapX;
+                        else player.x += overlapX;
+                        player.vx = 0;
+                    }
+                }
+            }
+            if (player.y > canvas.height + 100) hurtPlayer(true);
+        }
+
+        // --- Camera Follow ---
+        let targetCamX = player.x - canvas.width * 0.3;
+        cameraX += (targetCamX - cameraX) * 0.1;
+        if (cameraX < 0) cameraX = 0;
+
+        // --- Timers ---
+        if (player.invincible > 0) player.invincible--;
+        if (player.speedBoost > 0) player.speedBoost--;
+
+        // --- Entities Update ---
+        for (let i = items.length - 1; i >= 0; i--) {
+            let item = items[i];
+            
+            let collided = false;
+            if ((currentLevel === 3 || currentLevel === 5) && (item.type === 'goal' || item.type === 'santa_house')) {
+                if (Math.abs(player.x - item.x) < 80) collided = true;
+            } else {
+                collided = checkRectCollide(player, {x: item.x, y: item.y, w: 30, h: 30});
+            }
+
+            if (collided) {
+                if (item.type === 'bell') {
+                    rings++;
+                    score += 100;
+                    createSparkle(item.x, item.y, 'gold');
+                } else if (item.type === 'speed') {
+                    player.speedBoost = 600; 
+                    createSparkle(item.x, item.y, 'red');
+                    createFloatingText(item.x, item.y - 20, "SPEED UP!", "#FF4444");
+                } else if (item.type === 'shield') {
+                    player.shield = true;
+                    createSparkle(item.x, item.y, 'green');
+                    createFloatingText(item.x, item.y - 20, "SHIELD!", "#44FF44");
+                } else if (item.type === 'invincible') {
+                    player.invincible = 600;
+                    createSparkle(item.x, item.y, 'white');
+                    createFloatingText(item.x, item.y - 20, "INVINCIBLE!", "#FFFF44");
+                } else if (item.type === 'goal') {
+                    // Level Clear Logic
+                    score += rings * 200;
+                    createFloatingText(player.x, player.y - 60, `RING BONUS: ${rings * 200}`, "#FFD700");
+                    
+                    // SAVE STATS for next level checkpoint
+                    levelStartScore = score;
+                    levelStartRings = rings;
+
+                    if (currentLevel < 5) {
+                        startLevel(currentLevel + 1);
+                        return;
+                    } else {
+                        endGame(true);
+                    }
+                } else if (item.type === 'santa_house') {
+                    score += rings * 200; 
+                    endGame(true);
+                }
+                
+                items.splice(i, 1);
+            }
+        }
+
+        for (let e of enemies) {
+            // Update logic
+            if (e.type === 'snowman') {
+                e.x += e.vx;
+                if (Math.abs(e.x - e.startX) > 100) e.vx *= -1; 
+            } else if (e.type === 'flying_snowman') {
+                e.x += e.vx;
+                e.y = e.startY + Math.sin(time * 3 + e.offset) * 150;
+            } else if (e.type === 'party_snowman') {
+                e.angle = (e.angle || 0) + 0.1; 
+                e.x = e.startX + Math.cos(e.angle + e.offset) * 100;
+                e.y = e.startY + Math.sin(e.angle * 2 + e.offset) * 100;
+            }
+            
+            // Collision logic
+            let eBox = {x: e.x, y: e.y, w: 40, h: 40};
+            if (checkRectCollide(player, eBox)) {
+                let isAttack = (player.vy > 0 && player.y < e.y - 10) || player.isSpindashing || player.invincible > 0 || (player.flying && player.invincible > 0);
+                
+                if (isAttack) {
+                    score += 500;
+                    e.y = 9999; 
+                    if (!player.flying) player.vy = -8; 
+                    createSparkle(e.x, e.y, '#FFF');
+                } else {
+                    hurtPlayer();
+                }
+            }
+        }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life--;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        for (let i = floatingTexts.length - 1; i >= 0; i--) {
+            let ft = floatingTexts[i];
+            ft.y -= 1; 
+            ft.life--;
+            if (ft.life <= 0) floatingTexts.splice(i, 1);
+        }
+        
+        document.getElementById('score').innerText = score;
+        document.getElementById('rings').innerText = rings;
+    }
+
+    // --- Render Logic ---
+    function draw() {
+        drawBackground();
+
+        ctx.save();
+        ctx.translate(-cameraX, 0);
+
+        drawClouds();
+
+        // Platforms
+        ctx.fillStyle = '#FFF'; 
+        ctx.strokeStyle = '#ADD8E6'; 
+        ctx.lineWidth = 4;
+        for (let p of platforms) {
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.strokeRect(p.x, p.y, p.w, p.h);
+        }
+
+        drawDecor();
+
+        // Items
+        for (let item of items) {
+            if (item.type === 'bell') {
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.arc(item.x, item.y, 10, 0, Math.PI*2);
+                ctx.fill();
+                ctx.strokeStyle = '#DAA520';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            } else if (item.type === 'goal') {
+                ctx.fillStyle = '#888';
+                ctx.fillRect(item.x - 5, item.y, 10, 100);
+                ctx.fillStyle = `hsl(${Date.now()/5 % 360}, 70%, 50%)`;
+                ctx.fillRect(item.x, item.y, 60, 40);
+                
+                if (currentLevel === 3) {
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = '#FFFF00';
+                    ctx.fillRect(item.x - 5, -1000, 10, item.y + 1100); 
+                    ctx.globalAlpha = 1.0;
+                }
+            } else if (item.type === 'santa_house') {
+                // Draw Santa's House
+                let hx = item.x;
+                let hy = item.y + 30; // Ground anchor
+                ctx.fillStyle = '#8B4513'; // Wood
+                ctx.fillRect(hx - 60, hy - 100, 120, 100);
+                ctx.fillStyle = '#FF0000'; // Roof
+                ctx.beginPath();
+                ctx.moveTo(hx - 70, hy - 100);
+                ctx.lineTo(hx, hy - 160);
+                ctx.lineTo(hx + 70, hy - 100);
+                ctx.fill();
+                ctx.strokeStyle = 'white'; ctx.lineWidth = 4; ctx.stroke(); 
+                ctx.fillStyle = '#228B22'; // Door
+                ctx.fillRect(hx - 20, hy - 60, 40, 60);
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                let smokeY = (Date.now() / 10) % 50;
+                ctx.beginPath(); ctx.arc(hx + 40, hy - 160 - smokeY, 10 + smokeY/5, 0, Math.PI*2); ctx.fill();
+
+            } else if (item.type === 'flight') {
+                ctx.fillStyle = '#00FFFF';
+                ctx.beginPath(); ctx.arc(item.x, item.y, 15, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = '#FFF'; ctx.lineWidth = 2; ctx.stroke();
+            } else {
+                ctx.fillStyle = item.type === 'speed' ? 'red' : item.type === 'shield' ? 'green' : 'gold';
+                ctx.fillRect(item.x - 15, item.y - 15, 30, 30);
+                ctx.fillStyle = 'white';
+                ctx.font = '20px Arial';
+                ctx.fillText('?', item.x - 5, item.y + 7);
+            }
+        }
+
+        // Enemies
+        for (let e of enemies) {
+            if (e.y > 9000) continue;
+            
+            ctx.save();
+            if (e.type === 'party_snowman') {
+                // Spin the crazy ones
+                ctx.translate(e.x, e.y);
+                ctx.rotate(e.angle * 2);
+                ctx.translate(-e.x, -e.y);
+            }
+
+            if (e.type === 'snowman' || e.type === 'flying_snowman' || e.type === 'party_snowman') {
+                ctx.fillStyle = 'white';
+                ctx.beginPath(); ctx.arc(e.x, e.y, 15, 0, Math.PI*2); ctx.fill(); 
+                ctx.beginPath(); ctx.arc(e.x, e.y-20, 10, 0, Math.PI*2); ctx.fill(); 
+                ctx.fillStyle = 'orange'; 
+                ctx.beginPath(); ctx.moveTo(e.x+5, e.y-20); ctx.lineTo(e.x+15, e.y-18); ctx.lineTo(e.x+5, e.y-22); ctx.fill();
+                
+                if (e.type === 'flying_snowman' || e.type === 'party_snowman') {
+                    ctx.fillStyle = '#888';
+                    ctx.fillRect(e.x - 10, e.y - 35, 20, 4);
+                    ctx.fillRect(e.x - 2, e.y - 35, 4, 10);
+                }
+
+            } else if (e.type === 'spike') {
+                ctx.fillStyle = '#888';
+                ctx.beginPath();
+                ctx.moveTo(e.x - 15, e.y + 15);
+                ctx.lineTo(e.x + 15, e.y + 15);
+                ctx.lineTo(e.x, e.y - 25);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        drawPlayer();
+
+        for (let p of particles) {
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, p.size, p.size);
+        }
+
+        ctx.font = 'bold 20px Arial';
+        ctx.textAlign = 'center';
+        for (let ft of floatingTexts) {
+            ctx.fillStyle = ft.color;
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 3;
+            ctx.strokeText(ft.text, ft.x, ft.y);
+            ctx.fillText(ft.text, ft.x, ft.y);
+        }
+        
+        // Respawn Overlay
+        if (gameState === STATE.RESPAWNING) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(cameraX, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.font = '40px Arial';
+            ctx.fillText("TRY AGAIN!", cameraX + canvas.width/2, canvas.height/2);
+        }
+
+        ctx.textAlign = 'start'; 
+
+        ctx.restore();
+    }
+
+    function drawPlayer() {
+        if (player.invincible > 0 && Math.floor(Date.now() / 50) % 2 === 0) return;
+
+        let x = player.x;
+        let y = player.y;
+        
+        ctx.save();
+        ctx.translate(x, y);
+        
+        if (player.isSpindashing || (player.grounded && player.spindashCharge > 0)) {
+            ctx.rotate(Date.now() / 50);
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#5A3008'; 
+            ctx.beginPath(); ctx.arc(5, 5, 5, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(-5, -5, 5, 0, Math.PI*2); ctx.fill();
+        } else {
+            if (!player.facingRight && !player.flying) ctx.scale(-1, 1);
+            
+            let legOffset = 0;
+            if (Math.abs(player.vx) > 0.5) {
+                legOffset = Math.sin(Date.now() / 50) * 6;
+            }
+            
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            
+            if (player.flying) {
+                ctx.strokeStyle = '#5A3008';
+                ctx.beginPath(); ctx.moveTo(-5, 8); ctx.lineTo(-20, 5); ctx.stroke();
+                
+                ctx.fillStyle = '#8B4513';
+                ctx.beginPath(); ctx.ellipse(0, 5, 15, 10, 0, 0, Math.PI*2); ctx.fill();
+                
+                ctx.strokeStyle = '#8B4513';
+                ctx.beginPath(); ctx.moveTo(5, 8); ctx.lineTo(15, 10); ctx.stroke();
+                
+            } else {
+                ctx.strokeStyle = '#5A3008';
+                ctx.beginPath(); ctx.moveTo(-3, 8); ctx.lineTo(-3 - legOffset, 22); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(7, 8); ctx.lineTo(7 - legOffset, 22); ctx.stroke();
+
+                ctx.fillStyle = '#8B4513';
+                ctx.beginPath(); ctx.ellipse(0, 5, 15, 10, 0, 0, Math.PI*2); ctx.fill();
+
+                ctx.strokeStyle = '#8B4513'; 
+                ctx.beginPath(); ctx.moveTo(-6, 8); ctx.lineTo(-6 + legOffset, 22); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(4, 8); ctx.lineTo(4 + legOffset, 22); ctx.stroke();
+            }
+
+            ctx.beginPath();
+            ctx.arc(8, -10, 10, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle = 'red';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'red';
+            ctx.beginPath(); ctx.arc(16, -10, 4, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.strokeStyle = '#D2B48C';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(5, -18); ctx.lineTo(2, -28); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(11, -18); ctx.lineTo(14, -28); ctx.stroke();
+        }
+        
+        if (player.shield) {
+            ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(0, 0, 25, 0, Math.PI*2); ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    function drawClouds() {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        for(let i=0; i<10; i++) {
+            let cx = (i * 300) + (time * 10) % 3000; 
+            let parallaxX = cx + cameraX * 0.5;
+            ctx.beginPath();
+            ctx.arc(parallaxX, 100 + (i%3)*50, 40, 0, Math.PI*2);
+            ctx.arc(parallaxX + 30, 100 + (i%3)*50 - 20, 50, 0, Math.PI*2);
+            ctx.arc(parallaxX + 60, 100 + (i%3)*50, 40, 0, Math.PI*2);
+            ctx.fill();
+        }
+    }
+
+    function drawDecor() {
+        for(let i=0; i<80; i++) {
+            let tx = i * 120;
+            if (tx < cameraX - 150 || tx > cameraX + canvas.width + 150) continue;
+            
+            let ty = canvas.height - 100;
+            
+            let onGround = false;
+            for(let p of platforms) {
+                if (Math.abs(p.y - ty) < 5 && tx >= p.x && tx <= p.x + p.w) {
+                    onGround = true;
+                    break;
+                }
+            }
+            if (!onGround) continue;
+            
+            let heightVar = Math.abs(Math.sin(i * 12.9898)) * 40; 
+            let widthVar = Math.abs(Math.cos(i * 43.232)) * 10;
+            let colorShift = Math.sin(i) > 0 ? '#2E8B57' : '#228B22';
+
+            ctx.fillStyle = colorShift;
+            ctx.beginPath();
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(tx + 20 + widthVar/2, ty - 60 - heightVar);
+            ctx.lineTo(tx + 40 + widthVar, ty);
+            ctx.fill();
+            
+            ctx.fillStyle = '#5A3008';
+            ctx.fillRect(tx + 15 + widthVar/2, ty, 10, 10);
+        }
+    }
+
+    function drawBackground() {
+        if (currentLevel === 3) {
+            ctx.fillStyle = '#191970'; 
+        } else if (currentLevel === 4) {
+            ctx.fillStyle = '#FF7F50'; 
+        } else if (currentLevel === 5) {
+            ctx.fillStyle = '#000033'; // Deep Night Blue for L5
+        } else {
+            ctx.fillStyle = '#87CEEB'; 
+        }
+        
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Stars for Level 5
+        if (currentLevel === 5) {
+            ctx.fillStyle = 'white';
+            for(let i=0; i<50; i++) {
+                // Fixed random stars based on coordinate hash
+                let sx = (i * 1234 + time*10) % canvas.width;
+                let sy = (i * 5678) % (canvas.height - 200);
+                ctx.fillRect(sx, sy, 2, 2);
+            }
+        }
+
+        // Draw Light Blue Pit Area at bottom for visibility
+        ctx.fillStyle = '#87CEEB'; // Light Blue
+        ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
+    }
+
+    function checkRectCollide(p, r) {
+        return (p.x + p.w/2 > r.x - r.w/2 && 
+                p.x - p.w/2 < r.x + r.w/2 &&
+                p.y + p.h/2 > r.y - r.h/2 &&
+                p.y - p.h/2 < r.y + r.h/2);
+    }
+
+    function createSparkle(x, y, color) {
+        for(let i=0; i<5; i++) {
+            particles.push({
+                x: x, y: y,
+                vx: (Math.random() - 0.5) * 5,
+                vy: (Math.random() - 0.5) * 5,
+                color: color,
+                life: 30,
+                size: Math.random() * 4 + 2
+            });
+        }
+    }
+
+    function createParticle(x, y, color) {
+        particles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 1) * 4,
+            color: color,
+            life: 20,
+            size: 3
+        });
+    }
+
+    function createFloatingText(x, y, text, color) {
+        floatingTexts.push({
+            x: x, 
+            y: y,
+            text: text,
+            color: color,
+            life: 60 
+        });
+    }
+
+    function formatTime(t) {
+        let m = Math.floor(t / 60);
+        let s = Math.floor(t % 60);
+        return `${m}:${s<10?'0'+s:s}`;
+    }
+
+    function hurtPlayer(instantKill = false) {
+        if (player.invincible > 0 && !instantKill) return;
+
+        if (player.shield && !instantKill) {
+            player.shield = false;
+            player.invincible = 120; // 2 sec
+            player.vx = -5;
+            player.vy = -5;
+            createFloatingText(player.x, player.y - 20, "SAVED!", "#44FF44");
+        } else {
+            // Player Dies - Bells offer no protection now, only score
+            triggerRespawn();
+        }
+    }
+
+    function triggerRespawn() {
+        gameState = STATE.RESPAWNING;
+        createSparkle(player.x, player.y, 'white');
+        
+        // Wait 1.5 seconds then restart level
+        setTimeout(() => {
+            if(gameState === STATE.RESPAWNING) {
+                startLevel(currentLevel);
+            }
+        }, 1500);
+    }
+
+    function endGame(win) {
+        gameState = win ? STATE.WIN : STATE.GAMEOVER;
+        const box = document.getElementById('message-box');
+        const title = document.getElementById('msg-title');
+        const sub = document.getElementById('msg-sub');
+        const btn = document.getElementById('start-btn');
+
+        if (win) {
+            title.innerText = "CHRISTMAS SAVED!";
+            title.style.color = "#00FF00";
+            sub.innerText = `You reached Santa's House!\nTotal Score: ${score}`;
+            btn.innerText = "PLAY AGAIN";
+        } else {
+            title.innerText = "GAME OVER";
+            title.style.color = "#FF0000";
+            sub.innerText = `You reached Level ${currentLevel}.\nTry again!`;
+            btn.innerText = "RETRY";
+        }
+        
+        box.style.display = 'block';
+    }
+
+    // Start
+    init();
+
+</script>
+</body>
+</html>

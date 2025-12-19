@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Freelancer's Freeze</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Roboto:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Roboto', sans-serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: 4px solid #333;
+        }
+
+        canvas {
+            display: block;
+            background-color: #222;
+        }
+
+        /* HUD Styles */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .hud-panel {
+            position: absolute;
+            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            font-family: 'Press Start 2P', cursive;
+            font-size: 12px;
+            pointer-events: auto;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        #stats-panel {
+            top: 10px;
+            left: 10px;
+        }
+
+        .bar-container {
+            width: 200px;
+            height: 12px;
+            background: #444;
+            border: 2px solid #fff;
+            margin-top: 2px;
+            margin-bottom: 5px;
+            position: relative;
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 100%;
+            transition: width 0.1s linear;
+        }
+
+        #temp-bar-fill {
+            background: linear-gradient(90deg, #ff4d4d, #ffae00);
+        }
+        
+        #hunger-bar-fill {
+            background: #2ecc71; /* Green for hunger */
+        }
+
+        #money-display {
+            top: 10px;
+            right: 10px;
+            color: #4caf50;
+            font-size: 14px;
+        }
+
+        #bottom-hud {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        #bottom-hud .hud-panel {
+            position: relative;
+        }
+
+        #spawn-timer {
+            color: #ff4d4d;
+            font-size: 12px;
+        }
+        
+        #round-display {
+            color: #f1c40f;
+            font-size: 12px;
+        }
+
+        #shop-btn {
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff9800;
+            color: #000;
+            border: 2px solid #fff;
+            padding: 10px 20px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px #b36b00;
+            pointer-events: auto;
+            position: absolute;
+        }
+
+        #shop-btn:active {
+            transform: translateX(-50%) translateY(4px);
+            box-shadow: 0 0 #b36b00;
+        }
+        
+        /* Start Screen */
+        #start-screen, #victory-screen {
+            display: flex;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 20, 0.95);
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+            pointer-events: auto;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        #victory-screen {
+            display: none;
+            background: rgba(46, 204, 113, 0.95);
+        }
+
+        h1 {
+            font-family: 'Press Start 2P', cursive;
+            color: #74b9ff;
+            font-size: 32px;
+            text-shadow: 0 0 10px #0984e3;
+            margin-bottom: 20px;
+        }
+        
+        #victory-screen h1 {
+            color: #fff;
+            text-shadow: 0 0 10px #27ae60;
+        }
+
+        p {
+            font-family: 'Roboto', sans-serif;
+            color: #ecf0f1;
+            font-size: 16px;
+            line-height: 1.5;
+            max-width: 600px;
+            margin-bottom: 15px;
+        }
+
+        .action-btn {
+            background: #ff9800;
+            color: #000;
+            padding: 15px 30px;
+            font-family: 'Press Start 2P', cursive;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+            box-shadow: 0 4px #b36b00;
+        }
+        .action-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 #b36b00;
+        }
+
+        /* Floating Message */
+        #pickup-message {
+            display: none;
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Press Start 2P';
+            font-size: 10px;
+            color: #f1c40f;
+            text-align: center;
+        }
+
+        /* Shop Modal */
+        #shop-modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: #2d3436;
+            border: 4px solid #fff;
+            padding: 20px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+        #shop-modal h2 {
+            font-family: 'Press Start 2P', cursive;
+            text-align: center;
+            margin-top: 0;
+            color: #ff9800;
+        }
+
+        .shop-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #333;
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 4px solid #555;
+        }
+        
+        .shop-item.type-resist { border-left-color: #3498db; }
+        .shop-item.type-income { border-left-color: #2ecc71; }
+        .shop-item.type-utility { border-left-color: #9b59b6; }
+        .shop-item.type-auto { border-left-color: #e74c3c; }
+        .shop-item.type-repair { border-left-color: #d63031; }
+        .shop-item.type-key { border-left-color: #f1c40f; }
+
+        .item-icon {
+            font-size: 24px;
+            margin-right: 15px;
+            width: 30px;
+            text-align: center;
+        }
+
+        .shop-item-info {
+            flex-grow: 1;
+        }
+
+        .shop-item h4 {
+            margin: 0 0 4px 0;
+            font-weight: bold;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .level-bar-container {
+            width: 100%;
+            max-width: 150px;
+            height: 6px;
+            background: #555;
+            margin-top: 5px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .level-bar-fill {
+            height: 100%;
+            background: #f1c40f;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .shop-item p {
+            margin: 0;
+            font-size: 0.7em;
+            color: #aaa;
+        }
+
+        .stat-boost {
+            font-size: 0.75em;
+            color: #f1c40f;
+            margin-top: 2px;
+            font-weight: bold;
+        }
+
+        .buy-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 10px;
+            cursor: pointer;
+            min-width: 110px;
+            margin-left: 10px;
+        }
+
+        .buy-btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            color: #888;
+        }
+
+        .close-btn {
+            display: block;
+            width: 100%;
+            margin-top: 20px;
+            padding: 10px;
+            background: #d63031;
+            color: white;
+            border: none;
+            font-family: 'Press Start 2P', cursive;
+            cursor: pointer;
+        }
+
+        /* Game Over Screen */
+        #game-over-screen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 20, 0.9);
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            pointer-events: auto;
+        }
+
+        #game-over-screen h1 {
+            font-family: 'Press Start 2P', cursive;
+            color: #74b9ff;
+            font-size: 40px;
+            text-shadow: 0 0 10px #0984e3;
+            margin-bottom: 20px;
+        }
+
+        #restart-btn {
+            background: white;
+            color: black;
+            padding: 15px 30px;
+            font-family: 'Press Start 2P', cursive;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        /* Scrollbar for shop */
+        #shop-modal::-webkit-scrollbar {
+            width: 10px;
+        }
+        #shop-modal::-webkit-scrollbar-track {
+            background: #222; 
+        }
+        #shop-modal::-webkit-scrollbar-thumb {
+            background: #555; 
+        }
+        #shop-modal::-webkit-scrollbar-thumb:hover {
+            background: #888; 
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div id="ui-layer">
+        <div id="stats-panel" class="hud-panel">
+            <div style="font-size:10px; color:#aaa;">BODY TEMP</div>
+            <div class="bar-container">
+                <div id="temp-bar-fill" class="bar-fill"></div>
+            </div>
+            
+            <div style="font-size:10px; color:#aaa; margin-top:8px;">HUNGER</div>
+            <div class="bar-container">
+                <div id="hunger-bar-fill" class="bar-fill"></div>
+            </div>
+        </div>
+
+        <button id="shop-btn">OPEN SHOP (Space)</button>
+
+        <div id="money-display" class="hud-panel">
+            $<span id="money-val">0</span>
+        </div>
+        
+        <div id="bottom-hud">
+             <div id="spawn-timer" class="hud-panel">
+                NEXT ATTACK: <span id="timer-val">02:00</span>
+            </div>
+            <div id="round-display" class="hud-panel">
+                ROUND: <span id="round-val">1</span>/10
+            </div>
+        </div>
+        
+        <div id="pickup-message">ROBOT RESCUED! <br> RETURN TO COMPUTER</div>
+    </div>
+
+    <div id="shop-modal">
+        <h2>SURVIVAL STORE</h2>
+        <div id="shop-items">
+            <!-- Items injected by JS -->
+        </div>
+        <button class="close-btn" onclick="toggleShop()">CLOSE</button>
+    </div>
+
+    <div id="start-screen">
+        <h1>THE FREELANCER'S FREEZE</h1>
+        <p>Welcome to your new job! The office is... chilly.</p>
+        <p><strong>OBJECTIVE:</strong> Survive 10 Rounds. Save 2 Robots. Don't Freeze. Don't Starve.</p>
+        <p><strong>CONTROLS:</strong> Move with WASD / Arrows. Open Shop with SPACE.</p>
+        <button id="start-btn" class="action-btn">START WORKING</button>
+    </div>
+    
+    <div id="victory-screen">
+        <h1>YOU SURVIVED!</h1>
+        <p>All 10 Snowman waves defeated.</p>
+        <p>The Robots are saved and working!</p>
+        <p>The office is safe... for now.</p>
+        <button id="victory-btn" class="action-btn">PLAY AGAIN</button>
+    </div>
+
+    <div id="game-over-screen">
+        <h1 id="game-over-title">FROZEN!</h1>
+        <p id="game-over-msg" style="color: white; margin-bottom: 20px; font-family: 'Roboto';">You succumbed to the cold.</p>
+        <button id="restart-btn">TRY AGAIN</button>
+    </div>
+</div>
+
+<script>
+/**
+ * Game Logic
+ */
+
+// --- Constants ---
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 600;
+const PLAYER_SPEED = 4;
+const PLAYER_SIZE = 15;
+
+const MAX_TEMP = 100;
+const MAX_HUNGER = 100;
+const FREEZE_RATE_BASE = 0.4;
+const FREEZE_RATE_DEEP = 0.8; 
+const WARM_RATE = 0.6;
+const HUNGER_RATE = 0.04; // Reduced by half (was 0.08)
+
+const BASE_INCOME_RATE = 0.5;
+const INCOME_TICK_RATE = 10;
+const INITIAL_PC_X = 350; 
+
+const BASE_SPAWN_INTERVAL = 120 * 1000; 
+const SPAWN_TIME_REDUCTION = 10 * 1000; 
+const MAX_ROUNDS = 10;
+
+const SNOWMAN_SPEED = 1.5;
+const SNOWMAN_HP_MAX = 100;
+const HEATER_HP_MAX = 100;
+const HEATER_BASE_REPAIR = 50;
+const HEATER_REPAIR_INC = 25;
+
+// --- State ---
+let canvas, ctx;
+// Removed lightCanvas, lightCtx
+let lastTime = 0;
+let isGameStarted = false;
+let isGameOver = false;
+let isVictory = false;
+let isShopOpen = false;
+
+// Map Objects
+const WALL_1_X = 200; 
+const WALL_2_X = 550; 
+const ROOM_1_BOTTOM_Y = 450; 
+const DOOR_WIDTH = 100;
+const DOOR_Y_START = 300 - (DOOR_WIDTH / 2);
+const DOOR_Y_END = 300 + (DOOR_WIDTH / 2);
+
+// Game State Object
+let game = {
+    money: 20, // Start with $20
+    temp: 100,
+    hunger: 100,
+    coldResistance: 0, 
+    incomeMultiplier: 1,
+    robotLevel: 0,
+    player: { x: 400, y: 300, vx: 0, vy: 0 },
+    keys: {},
+    particles: [],
+    frame: 0,
+    
+    round: 1,
+    currentSpawnInterval: BASE_SPAWN_INTERVAL,
+    lastSnowmanSpawn: 0,
+    shopPauseStart: 0, 
+    
+    snowmen: [],
+    heater: {
+        x: 720, y: 250, width: 50, height: 50,
+        hp: HEATER_HP_MAX,
+        maxHp: HEATER_HP_MAX,
+        broken: false,
+        repairCount: 0
+    },
+    
+    food: {
+        x: 300, y: 420, width: 30, height: 30 // Pizza Box / Fridge location
+    },
+    
+    // Logic Flags
+    hasKey: false,
+    // Removed hasLight
+
+    foundRobot: { x: 50, y: 550, pickedUp: false, delivered: false, size: 15 },
+    foundRobot2: { x: 450, y: 525, pickedUp: false, delivered: false, size: 15 }
+};
+
+// Computer object
+let COMPUTER = {
+    x: INITIAL_PC_X, y: 150, width: 60, height: 100, color: '#333'
+};
+
+// Shop Items
+const UPGRADES_DATA = [
+    { id: 'repair_heater', icon: '🔧', name: 'Fix Heater', type: 'repair', baseCost: 50, costMult: 1, basePower: 0, level: 0, desc: 'Restore Heater HP' },
+    { id: 'key', icon: '🔑', name: 'Room Key', type: 'key', baseCost: 100, costMult: 1, basePower: 0, level: 0, desc: 'Unlocks Deep Freeze' },
+    // Removed Lightbulb
+    
+    { id: 'move_pc', icon: '🖥️', name: 'Move Desk', type: 'utility', baseCost: 100, costMult: 1.5, basePower: 30, level: 0, desc: 'Move Closer to Heat' },
+    
+    { id: 'socks', icon: '🧦', name: 'Wool Socks', type: 'resist', baseCost: 15, costMult: 1.5, basePower: 0.05, level: 0, desc: 'Heat Retention' },
+    { id: 'hat', icon: '🧢', name: 'Beanie Hat', type: 'resist', baseCost: 25, costMult: 1.6, basePower: 0.08, level: 0, desc: 'Heat Retention' },
+    { id: 'gloves', icon: '🧤', name: 'Mittens', type: 'resist', baseCost: 40, costMult: 1.6, basePower: 0.10, level: 0, desc: 'Heat Retention' },
+    { id: 'jacket', icon: '🧥', name: 'Puffer Jacket', type: 'resist', baseCost: 150, costMult: 1.8, basePower: 0.15, level: 0, desc: 'Heat Retention' },
+    
+    { id: 'mouse', icon: '🖱️', name: 'Ergo Mouse', type: 'income', baseCost: 20, costMult: 1.4, basePower: 0.1, level: 0, desc: 'Multiplier' },
+    { id: 'monitor', icon: '📺', name: '2nd Monitor', type: 'income', baseCost: 120, costMult: 1.6, basePower: 0.4, level: 0, desc: 'Multiplier' },
+    { id: 'cpu', icon: '🧠', name: 'New CPU', type: 'income', baseCost: 300, costMult: 1.7, basePower: 0.8, level: 0, desc: 'Multiplier' },
+];
+
+let activeUpgrades = [];
+
+// --- Initialization ---
+
+window.onload = function() {
+    canvas = document.getElementById('gameCanvas');
+    ctx = canvas.getContext('2d');
+
+    // Removed Light Canvas initialization
+
+    // Input Listeners
+    window.addEventListener('keydown', e => {
+        if (!isGameStarted) return;
+        game.keys[e.key] = true;
+        if (e.code === 'Space') {
+            if(!isGameOver && !isVictory) toggleShop();
+        }
+    });
+    window.addEventListener('keyup', e => {
+        if (!isGameStarted) return;
+        game.keys[e.key] = false;
+    });
+
+    document.getElementById('start-btn').addEventListener('click', () => {
+        document.getElementById('start-screen').style.display = 'none';
+        isGameStarted = true;
+        resetGame();
+    });
+    document.getElementById('victory-btn').addEventListener('click', () => {
+        document.getElementById('victory-screen').style.display = 'none';
+        resetGame();
+    });
+    document.getElementById('shop-btn').addEventListener('click', toggleShop);
+    document.getElementById('restart-btn').addEventListener('click', resetGame);
+
+    draw();
+    requestAnimationFrame(gameLoop);
+};
+
+function resetGame() {
+    game.money = 20;
+    game.temp = MAX_TEMP;
+    game.hunger = MAX_HUNGER;
+    game.coldResistance = 0;
+    game.incomeMultiplier = 1;
+    game.robotLevel = 0;
+    game.player = { x: 400, y: 300, vx: 0, vy: 0 };
+    game.keys = {};
+    game.particles = [];
+    game.snowmen = [];
+    
+    game.round = 1;
+    game.currentSpawnInterval = BASE_SPAWN_INTERVAL;
+    
+    game.heater.hp = HEATER_HP_MAX;
+    game.heater.broken = false;
+    game.heater.repairCount = 0;
+    
+    game.hasKey = false;
+    // Removed hasLight reset
+    
+    game.foundRobot = { x: 50, y: 550, pickedUp: false, delivered: false, size: 15 };
+    game.foundRobot2 = { x: 450, y: 525, pickedUp: false, delivered: false, size: 15 };
+    
+    game.lastSnowmanSpawn = Date.now();
+    
+    isGameOver = false;
+    isVictory = false;
+    isShopOpen = false;
+
+    COMPUTER.x = INITIAL_PC_X;
+    document.getElementById('pickup-message').style.display = 'none';
+
+    activeUpgrades = JSON.parse(JSON.stringify(UPGRADES_DATA));
+    
+    document.getElementById('game-over-screen').style.display = 'none';
+    document.getElementById('victory-screen').style.display = 'none';
+    recalcStats();
+    updateShopUI(); 
+    updateHUD();
+}
+
+function toggleShop() {
+    isShopOpen = !isShopOpen;
+    const modal = document.getElementById('shop-modal');
+    modal.style.display = isShopOpen ? 'block' : 'none';
+    game.keys = {}; 
+    
+    if(isShopOpen) {
+        game.shopPauseStart = Date.now();
+        updateShopUI();
+    } else {
+        if (game.shopPauseStart) {
+            const diff = Date.now() - game.shopPauseStart;
+            game.lastSnowmanSpawn += diff;
+            game.shopPauseStart = 0;
+        }
+    }
+}
+
+// --- Core Loop ---
+
+function gameLoop(timestamp) {
+    const deltaTime = timestamp - lastTime;
+    lastTime = timestamp;
+
+    if (isGameStarted && !isGameOver && !isVictory && !isShopOpen) {
+        update(deltaTime);
+    }
+    draw();
+
+    requestAnimationFrame(gameLoop);
+}
+
+function update(deltaTime) {
+    game.frame++;
+    const now = Date.now();
+
+    // 0. Snowman / Round Logic
+    if (game.round <= MAX_ROUNDS) {
+        if (now - game.lastSnowmanSpawn > game.currentSpawnInterval) {
+            const spawnCount = game.round >= 7 ? 2 : 1;
+            
+            for (let i = 0; i < spawnCount; i++) {
+                game.snowmen.push({
+                    x: 20, y: 150 + Math.random() * 300, 
+                    hp: SNOWMAN_HP_MAX,
+                    maxHp: SNOWMAN_HP_MAX,
+                    speed: SNOWMAN_SPEED,
+                    radius: 15
+                });
+            }
+            
+            spawnFloatText(game.heater.x, game.heater.y - 40, "ROUND " + game.round + " ATTACK!", "#ff4d4d");
+            
+            game.round++;
+            game.lastSnowmanSpawn = now;
+            
+            if (game.round <= MAX_ROUNDS) {
+                game.currentSpawnInterval = Math.max(10000, BASE_SPAWN_INTERVAL - ((game.round-1) * SPAWN_TIME_REDUCTION));
+            }
+        }
+    } else {
+        if (game.snowmen.length === 0 && game.foundRobot.delivered && game.foundRobot2.delivered) {
+            isVictory = true;
+            document.getElementById('victory-screen').style.display = 'flex';
+        }
+    }
+
+    // 1. Movement Logic
+    let dx = 0;
+    let dy = 0;
+
+    if (game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) dy = -1;
+    if (game.keys['ArrowDown'] || game.keys['s'] || game.keys['S']) dy = 1;
+    if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) dx = -1;
+    if (game.keys['ArrowRight'] || game.keys['d'] || game.keys['D']) dx = 1;
+
+    if (dx !== 0 || dy !== 0) {
+        const length = Math.sqrt(dx * dx + dy * dy);
+        dx /= length;
+        dy /= length;
+    }
+
+    game.player.x += dx * PLAYER_SPEED;
+    game.player.y += dy * PLAYER_SPEED;
+
+    // 2. Collision Logic
+    if (game.player.x < PLAYER_SIZE) game.player.x = PLAYER_SIZE;
+    if (game.player.x > CANVAS_WIDTH - PLAYER_SIZE) game.player.x = CANVAS_WIDTH - PLAYER_SIZE;
+    if (game.player.y < PLAYER_SIZE) game.player.y = PLAYER_SIZE;
+    if (game.player.y > CANVAS_HEIGHT - PLAYER_SIZE) game.player.y = CANVAS_HEIGHT - PLAYER_SIZE;
+
+    const pX = game.player.x;
+    const pY = game.player.y;
+    const pR = PLAYER_SIZE;
+
+    // Wall 1
+    if (Math.abs(pX - WALL_1_X) < pR + 5) {
+        if (pY <= ROOM_1_BOTTOM_Y + pR) {
+             let canPass = false;
+             if (pY >= DOOR_Y_START && pY <= DOOR_Y_END) {
+                 if (game.hasKey) canPass = true; 
+             }
+             if (!canPass) {
+                 if (pX < WALL_1_X) game.player.x = WALL_1_X - 5 - pR;
+                 else game.player.x = WALL_1_X + 5 + pR;
+             }
+        }
+    }
+
+    // Wall 2
+    if (Math.abs(pX - WALL_2_X) < pR + 5) {
+        let hasDoor = (pY > DOOR_Y_START && pY < DOOR_Y_END) && (pY <= ROOM_1_BOTTOM_Y); 
+        if (pY > ROOM_1_BOTTOM_Y) hasDoor = false; 
+        if (!hasDoor) {
+             if (pX < WALL_2_X) game.player.x = WALL_2_X - 5 - pR;
+             else game.player.x = WALL_2_X + 5 + pR;
+        }
+    }
+
+    // Wall 3
+    if (Math.abs(pY - ROOM_1_BOTTOM_Y) < pR + 5) {
+        if (pX > WALL_1_X && pX < WALL_2_X) {
+            if (pY < ROOM_1_BOTTOM_Y) game.player.y = ROOM_1_BOTTOM_Y - 5 - pR;
+            else game.player.y = ROOM_1_BOTTOM_Y + 5 + pR;
+        }
+    }
+
+    // 3. Environment & Stats
+    let currentRoom = 1; 
+    if (game.player.x < WALL_1_X) currentRoom = 3;
+    else if (game.player.x >= WALL_2_X) currentRoom = 2;
+    else if (game.player.y > ROOM_1_BOTTOM_Y) currentRoom = 3; 
+    else currentRoom = 1;
+
+    const effectiveResist = Math.min(game.coldResistance, 0.90);
+
+    // Hunger Decay
+    game.hunger -= HUNGER_RATE;
+    
+    // Food Interaction
+    const distToFood = Math.hypot(game.player.x - (game.food.x + game.food.width/2), game.player.y - (game.food.y + game.food.height/2));
+    if (distToFood < 40) {
+        if (game.hunger < 100) {
+            game.hunger = Math.min(100, game.hunger + 5); // Eat rapidly
+            if(Math.random() < 0.2) createParticle(game.food.x + 15, game.food.y, '#2ecc71', 'up');
+        }
+    }
+
+    if (currentRoom === 3) {
+        game.temp -= FREEZE_RATE_DEEP * (1 - effectiveResist);
+        if (Math.random() < 0.2) createParticle(game.player.x, game.player.y - 15, '#dff9fb', 'up');
+    } else if (currentRoom === 1) {
+        game.temp -= FREEZE_RATE_BASE * (1 - effectiveResist);
+        if (Math.random() < 0.05) createParticle(game.player.x, game.player.y - 15, '#a4b0be', 'up');
+    } else {
+        if (!game.heater.broken) {
+            game.temp += WARM_RATE;
+            if (game.temp > MAX_TEMP) game.temp = MAX_TEMP;
+            const distToHeater = Math.hypot(game.player.x - (game.heater.x + game.heater.width/2), game.player.y - (game.heater.y + game.heater.height/2));
+            if (distToHeater < 100 && Math.random() < 0.2) createParticle(game.player.x, game.player.y, '#ff6b6b', 'up');
+        } else {
+             game.temp -= FREEZE_RATE_BASE * (1 - effectiveResist);
+             if (Math.random() < 0.1) createParticle(game.player.x, game.player.y - 15, '#a4b0be', 'up');
+        }
+    }
+
+    // 4. Snowmen
+    for (let i = game.snowmen.length - 1; i >= 0; i--) {
+        let sm = game.snowmen[i];
+        let hx = game.heater.x + game.heater.width/2;
+        let hy = game.heater.y + game.heater.height/2;
+        let dx = hx - sm.x;
+        let dy = hy - sm.y;
+        let dist = Math.hypot(dx, dy);
+        
+        if (dist > 30) {
+            sm.x += (dx/dist) * sm.speed;
+            sm.y += (dy/dist) * sm.speed;
+        } else {
+            if (!game.heater.broken) {
+                game.heater.hp -= 0.11; 
+                sm.hp -= 0.2; 
+                if (Math.random() < 0.1) createParticle(sm.x, sm.y, '#fff', 'up');
+                if (game.heater.hp <= 0) {
+                    game.heater.hp = 0;
+                    game.heater.broken = true;
+                    spawnFloatText(game.heater.x, game.heater.y, "HEATER BROKEN!", "red");
+                }
+            }
+        }
+        if (sm.hp <= 0) game.snowmen.splice(i, 1);
+    }
+
+    // 5. Income
+    if (currentRoom === 1) {
+        const distToPC = Math.hypot(game.player.x - (COMPUTER.x + COMPUTER.width/2), game.player.y - (COMPUTER.y + COMPUTER.height/2));
+        if (distToPC < 80) {
+            if (game.frame % INCOME_TICK_RATE === 0) {
+                game.money += BASE_INCOME_RATE * game.incomeMultiplier;
+            }
+        }
+    }
+    
+    handleRobotLogic(game.foundRobot);
+    handleRobotLogic(game.foundRobot2);
+
+    if (game.robotLevel > 0) {
+        if (game.frame % INCOME_TICK_RATE === 0) {
+            const robotIncome = 0.2 * game.robotLevel; 
+            game.money += robotIncome;
+            if (Math.random() < 0.1) createParticle(COMPUTER.x + 20, COMPUTER.y + 80, '#f1c40f', 'up');
+        }
+    }
+
+    // Death Check
+    if (game.temp <= 0) {
+        game.temp = 0;
+        isGameOver = true;
+        document.getElementById('game-over-title').innerText = "FROZEN!";
+        document.getElementById('game-over-msg').innerText = "You succumbed to the cold.";
+        document.getElementById('game-over-screen').style.display = 'flex';
+    }
+    if (game.hunger <= 0) {
+        game.hunger = 0;
+        isGameOver = true;
+        document.getElementById('game-over-title').innerText = "STARVED!";
+        document.getElementById('game-over-msg').innerText = "You forgot to eat.";
+        document.getElementById('game-over-screen').style.display = 'flex';
+    }
+
+    updateParticles();
+    updateHUD();
+}
+
+function handleRobotLogic(robot) {
+    if (!robot.delivered) {
+        if (!robot.pickedUp) {
+            const dist = Math.hypot(game.player.x - robot.x, game.player.y - robot.y);
+            if (dist < 30) {
+                robot.pickedUp = true;
+                document.getElementById('pickup-message').innerText = "ROBOT RESCUED!\nRETURN TO COMPUTER";
+                document.getElementById('pickup-message').style.display = 'block';
+            }
+        } else {
+            const dist = Math.hypot(game.player.x - (COMPUTER.x + COMPUTER.width/2), game.player.y - (COMPUTER.y + COMPUTER.height/2));
+            if (dist < 60) {
+                robot.delivered = true;
+                game.robotLevel++; 
+                document.getElementById('pickup-message').style.display = 'none';
+                spawnFloatText(game.player.x, game.player.y - 40, "ROBOT DEPLOYED!", "#f1c40f");
+            }
+        }
+    }
+}
+
+// --- Rendering ---
+
+function draw() {
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // 1. Floors
+    ctx.fillStyle = '#2c3e50'; 
+    ctx.fillRect(0, 0, WALL_1_X, CANVAS_HEIGHT);
+    ctx.fillRect(WALL_1_X, ROOM_1_BOTTOM_Y, WALL_2_X - WALL_1_X, CANVAS_HEIGHT - ROOM_1_BOTTOM_Y);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'; 
+    ctx.fillRect(0, 0, WALL_1_X, CANVAS_HEIGHT);
+    ctx.fillRect(WALL_1_X, ROOM_1_BOTTOM_Y, WALL_2_X - WALL_1_X, CANVAS_HEIGHT - ROOM_1_BOTTOM_Y);
+
+    ctx.fillStyle = '#34495e';
+    ctx.fillRect(WALL_1_X, 0, WALL_2_X - WALL_1_X, ROOM_1_BOTTOM_Y);
+    ctx.fillStyle = 'rgba(52, 152, 219, 0.05)'; 
+    ctx.fillRect(WALL_1_X, 0, WALL_2_X - WALL_1_X, ROOM_1_BOTTOM_Y);
+
+    ctx.fillStyle = '#594f43';
+    ctx.fillRect(WALL_2_X, 0, CANVAS_WIDTH - WALL_2_X, CANVAS_HEIGHT);
+    if (!game.heater.broken) {
+        ctx.fillStyle = 'rgba(230, 126, 34, 0.1)'; 
+        ctx.fillRect(WALL_2_X, 0, CANVAS_WIDTH - WALL_2_X, CANVAS_HEIGHT);
+    } else {
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.3)'; 
+        ctx.fillRect(WALL_2_X, 0, CANVAS_WIDTH - WALL_2_X, CANVAS_HEIGHT);
+    }
+
+    // 2. Walls
+    ctx.fillStyle = '#95a5a6';
+    ctx.fillRect(WALL_1_X - 5, 0, 10, DOOR_Y_START);
+    ctx.fillRect(WALL_1_X - 5, DOOR_Y_END, 10, ROOM_1_BOTTOM_Y - DOOR_Y_END);
+    ctx.fillRect(WALL_2_X - 5, 0, 10, DOOR_Y_START);
+    ctx.fillRect(WALL_2_X - 5, DOOR_Y_END, 10, CANVAS_HEIGHT - DOOR_Y_END);
+    ctx.fillRect(WALL_1_X - 5, ROOM_1_BOTTOM_Y, WALL_2_X - WALL_1_X + 5, 10);
+
+    if (!game.hasKey) {
+        ctx.fillStyle = '#c0392b';
+        ctx.fillRect(WALL_1_X - 2, DOOR_Y_START, 4, DOOR_Y_END - DOOR_Y_START);
+        ctx.fillStyle = '#f1c40f';
+        ctx.fillRect(WALL_1_X - 5, 300 - 5, 10, 10);
+    }
+
+    // 3. Objects
+    drawRobot(game.foundRobot);
+    drawRobot(game.foundRobot2);
+
+    // Food (Pizza Box)
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(game.food.x, game.food.y, game.food.width, game.food.height);
+    ctx.fillStyle = '#c0392b'; // Pepperoni/Logo
+    ctx.beginPath(); ctx.arc(game.food.x + 15, game.food.y + 15, 8, 0, Math.PI*2); ctx.fill();
+    ctx.font = '8px Arial'; ctx.fillStyle = '#fff'; ctx.fillText("PIZZA", game.food.x+2, game.food.y-5); // Changed to white text
+
+    ctx.fillStyle = '#34495e';
+    ctx.fillRect(COMPUTER.x, COMPUTER.y, COMPUTER.width, COMPUTER.height);
+    ctx.fillStyle = '#3498db';
+    ctx.fillRect(COMPUTER.x + 10, COMPUTER.y + 20, 40, 30);
+    ctx.fillStyle = '#7f8c8d';
+    ctx.fillRect(COMPUTER.x + 10, COMPUTER.y + 60, 40, 15);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '10px Arial';
+    ctx.fillText("WORK", COMPUTER.x + 15, COMPUTER.y - 10);
+
+    if (game.robotLevel > 0) {
+        const count = Math.min(game.robotLevel, 5); 
+        for(let i=0; i<count; i++) {
+            const bounce = Math.abs(Math.sin((game.frame + i*10) * 0.1)) * 3;
+            const rx = COMPUTER.x - 25 + (i*15); 
+            const ry = COMPUTER.y + 80 - bounce;
+            drawSimpleRobot(rx, ry, '#2ecc71'); 
+        }
+    }
+
+    ctx.fillStyle = game.heater.broken ? '#555' : '#c0392b';
+    ctx.fillRect(game.heater.x, game.heater.y, game.heater.width, game.heater.height);
+    if (!game.heater.broken) {
+        ctx.fillStyle = '#e74c3c';
+        for(let i=0; i<4; i++) ctx.fillRect(game.heater.x + 5, game.heater.y + 10 + (i*8), 40, 4);
+    } else {
+        if (Math.random() < 0.2) createParticle(game.heater.x + 25, game.heater.y + 10, '#555', 'up');
+    }
+
+    const heaterBarW = 50;
+    const heaterBarH = 6;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(game.heater.x, game.heater.y - 15, heaterBarW, heaterBarH);
+    const heaterPct = game.heater.hp / game.heater.maxHp;
+    ctx.fillStyle = heaterPct > 0.5 ? '#2ecc71' : (heaterPct > 0.2 ? '#f1c40f' : '#e74c3c');
+    ctx.fillRect(game.heater.x, game.heater.y - 15, heaterBarW * heaterPct, heaterBarH);
+
+    for(let sm of game.snowmen) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(sm.x, sm.y, 15, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sm.x, sm.y - 18, 12, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sm.x, sm.y - 32, 10, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#e67e22';
+        ctx.beginPath(); ctx.moveTo(sm.x, sm.y - 32); ctx.lineTo(sm.x + 10, sm.y - 30); ctx.lineTo(sm.x, sm.y - 28); ctx.fill();
+        
+        const smBarW = 30;
+        ctx.fillStyle = '#333';
+        ctx.fillRect(sm.x - 15, sm.y - 50, smBarW, 4);
+        const smPct = sm.hp / sm.maxHp;
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(sm.x - 15, sm.y - 50, smBarW * smPct, 4);
+    }
+
+    if (game.temp < 50) {
+        const opacity = (50 - game.temp) / 80; 
+        ctx.fillStyle = `rgba(0, 168, 255, ${opacity})`;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
+
+    ctx.beginPath();
+    ctx.arc(game.player.x, game.player.y, PLAYER_SIZE, 0, Math.PI * 2);
+    const r = game.temp > 50 ? 255 : Math.floor(255 * (game.temp/50));
+    const b = game.temp < 50 ? 255 : Math.floor(255 * ((100-game.temp)/50));
+    ctx.fillStyle = `rgb(${r}, 200, ${b})`;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(game.player.x - 5, game.player.y - 2, 4, 0, Math.PI * 2);
+    ctx.arc(game.player.x + 5, game.player.y - 2, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'black';
+    ctx.beginPath();
+    ctx.arc(game.player.x - 5, game.player.y - 2, 2, 0, Math.PI * 2);
+    ctx.arc(game.player.x + 5, game.player.y - 2, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (game.temp < 30) {
+        ctx.moveTo(game.player.x - 4, game.player.y + 6);
+        ctx.lineTo(game.player.x - 2, game.player.y + 4);
+        ctx.lineTo(game.player.x + 0, game.player.y + 6);
+        ctx.lineTo(game.player.x + 2, game.player.y + 4);
+        ctx.lineTo(game.player.x + 4, game.player.y + 6);
+    } else {
+        ctx.arc(game.player.x, game.player.y + 5, 4, 0, Math.PI);
+    }
+    ctx.stroke();
+
+    drawParticles();
+
+    if (game.player.x > WALL_1_X && game.player.x < WALL_2_X && game.player.y < ROOM_1_BOTTOM_Y) {
+        const distToPC = Math.hypot(game.player.x - (COMPUTER.x + COMPUTER.width/2), game.player.y - (COMPUTER.y + COMPUTER.height/2));
+        if (distToPC < 80) {
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Earning...", game.player.x - 20, game.player.y - 25);
+        }
+    }
+
+    // Removed Lighting Effects Block
+}
+
+function drawRobot(robot) {
+    if (!robot.delivered) {
+        let rx, ry;
+        if (robot.pickedUp) {
+            rx = game.player.x - 10; ry = game.player.y - 10;
+        } else {
+            const wobble = Math.sin(game.frame * 0.1) * 5; 
+            rx = robot.x + wobble; 
+            ry = robot.y;
+        }
+        drawSimpleRobot(rx, ry, '#3498db', robot.pickedUp);
+    }
+}
+
+function drawSimpleRobot(x, y, eyeColor, isHeld) {
+    const bodyColor = isHeld ? '#bdc3c7' : '#7f8c8d';
+    
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(x, y, 16, 16); 
+    ctx.fillStyle = isHeld ? '#95a5a6' : '#607d8b';
+    ctx.fillRect(x + 2, y - 8, 12, 8);
+    ctx.fillStyle = eyeColor;
+    ctx.fillRect(x + 4, y - 6, 3, 3);
+    ctx.fillRect(x + 10, y - 6, 3, 3);
+    ctx.strokeStyle = bodyColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 8, y - 8);
+    ctx.lineTo(x + 8, y - 14);
+    ctx.stroke();
+    ctx.fillStyle = eyeColor;
+    ctx.beginPath();
+    ctx.arc(x + 8, y - 14, 2, 0, Math.PI*2);
+    ctx.fill();
+}
+
+function createParticle(x, y, color, type) {
+    game.particles.push({
+        x: x, y: y, color: color, life: 1.0,
+        vx: (Math.random() - 0.5) * 1,
+        vy: -1 - Math.random(),
+        size: Math.random() * 3 + 1
+    });
+}
+
+function updateParticles() {
+    for (let i = game.particles.length - 1; i >= 0; i--) {
+        let p = game.particles[i];
+        p.x += p.vx; p.y += p.vy;
+        p.life -= 0.02;
+        if (p.life <= 0) game.particles.splice(i, 1);
+    }
+}
+
+function drawParticles() {
+    for (let p of game.particles) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+function spawnFloatText(x, y, text, color) {
+    console.log(text);
+}
+
+function getCost(item) {
+    return Math.floor(item.baseCost * Math.pow(item.costMult, item.level));
+}
+
+function recalcStats() {
+    game.coldResistance = 0;
+    game.incomeMultiplier = 1;
+    game.robotLevel = (game.foundRobot.delivered ? 1 : 0) + (game.foundRobot2.delivered ? 1 : 0); 
+
+    activeUpgrades.forEach(item => {
+        if (item.level > 0) {
+            if (item.type === 'resist') {
+                game.coldResistance += (item.basePower * item.level);
+            } else if (item.type === 'income') {
+                game.incomeMultiplier += (item.basePower * item.level);
+            } else if (item.type === 'utility' && item.id === 'move_pc') {
+                COMPUTER.x = INITIAL_PC_X + (item.basePower * item.level);
+                if(COMPUTER.x > WALL_2_X - 70) COMPUTER.x = WALL_2_X - 70;
+            } else if (item.type === 'auto' && item.id === 'robot') {
+                game.robotLevel += item.level;
+            }
+        }
+    });
+}
+
+function updateHUD() {
+    const tempBar = document.getElementById('temp-bar-fill');
+    const hungerBar = document.getElementById('hunger-bar-fill');
+    const moneyVal = document.getElementById('money-val');
+    const timerVal = document.getElementById('timer-val');
+    const roundVal = document.getElementById('round-val');
+
+    tempBar.style.width = `${Math.max(0, game.temp)}%`;
+    hungerBar.style.width = `${Math.max(0, game.hunger)}%`;
+    
+    if (game.round <= MAX_ROUNDS) {
+        const now = Date.now();
+        const timePassed = now - game.lastSnowmanSpawn;
+        const timeLeft = Math.max(0, game.currentSpawnInterval - timePassed);
+        const secondsTotal = Math.ceil(timeLeft / 1000);
+        const minutes = Math.floor(secondsTotal / 60);
+        const seconds = secondsTotal % 60;
+        timerVal.innerText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        roundVal.innerText = game.round;
+    } else {
+        timerVal.innerText = "FINAL";
+        roundVal.innerText = "10";
+    }
+
+    if (game.temp < 30) {
+        tempBar.style.background = '#0984e3'; // Visual warning only
+    } else {
+        tempBar.style.background = 'linear-gradient(90deg, #ff4d4d, #ffae00)';
+    }
+
+    moneyVal.innerText = Math.floor(game.money);
+    
+    if (document.getElementById('shop-modal').style.display !== 'none') {
+        updateShopUI();
+    }
+}
+
+function updateShopUI() {
+    const list = document.getElementById('shop-items');
+    list.innerHTML = '';
+
+    if (game.heater.hp < HEATER_HP_MAX || game.heater.broken) {
+        const repairItem = UPGRADES_DATA.find(i => i.id === 'repair_heater');
+        const currentRepairCost = HEATER_BASE_REPAIR + (game.heater.repairCount * HEATER_REPAIR_INC);
+        renderShopItem(list, repairItem, true, currentRepairCost);
+    }
+
+    if (!game.hasKey) {
+        const keyItem = UPGRADES_DATA.find(i => i.id === 'key');
+        renderShopItem(list, keyItem, false);
+    }
+
+    // Removed Lightbulb Logic
+
+    activeUpgrades.forEach(item => {
+        // Removed lightbulb check
+        if (item.id !== 'repair_heater' && item.id !== 'key') {
+            renderShopItem(list, item, false);
+        }
+    });
+}
+
+function renderShopItem(container, item, isRepair, customCost) {
+    const isMaxed = !isRepair && item.level >= 10;
+    const currentCost = customCost !== undefined ? customCost : getCost(item);
+    const div = document.createElement('div');
+    div.className = `shop-item type-${item.type}`;
+
+    const canAfford = game.money >= currentCost;
+    let btnState = (canAfford && !isMaxed) ? '' : 'disabled';
+    
+    if (isRepair && game.heater.hp >= HEATER_HP_MAX) btnState = 'disabled';
+
+    let statDesc = item.desc;
+    let boostText = "";
+
+    if(item.type === 'resist') {
+        boostText = `+${Math.round(item.basePower * 100)}% Heat Ret per lvl`;
+    } else if (item.type === 'income') {
+        boostText = `+${Math.round(item.basePower * 100)}% Income per lvl`;
+    } else if (item.id === 'move_pc') {
+        boostText = `+${item.basePower}px Distance`;
+        statDesc = `Current X: ${Math.floor(COMPUTER.x)}`;
+    } else if (item.type === 'repair') {
+        boostText = "Restores 100% HP";
+    }
+
+    const progressPercent = isRepair || item.type === 'key' ? 100 : (item.level / 10) * 100;
+    
+    let btnText = `UPGRADE<br>$${currentCost}`;
+    if (isMaxed) btnText = "MAX LEVEL";
+    if (isRepair) btnText = `REPAIR<br>$${currentCost}`;
+    if (item.type === 'key') btnText = `BUY<br>$${currentCost}`;
+
+    div.innerHTML = `
+        <div class="item-icon">${item.icon}</div>
+        <div class="shop-item-info">
+            <h4>${item.name} <span style="font-size:0.7em; color:#fff; margin-left:5px;">${(isRepair || item.type === 'key') ? '' : '(Lvl '+item.level+')'}</span></h4>
+            ${(!isRepair && item.type !== 'key') ? `<div class="level-bar-container"><div class="level-bar-fill" style="width: ${progressPercent}%"></div></div>` : ''}
+            <div class="stat-boost">${boostText}</div>
+            <p>${statDesc}</p>
+        </div>
+        <button class="buy-btn" ${btnState} onclick="buyItem('${item.id}')">
+            ${btnText}
+        </button>
+    `;
+    container.appendChild(div);
+}
+
+window.buyItem = function(id) {
+    if (id === 'repair_heater') {
+        const item = UPGRADES_DATA.find(i => i.id === 'repair_heater');
+        const currentRepairCost = HEATER_BASE_REPAIR + (game.heater.repairCount * HEATER_REPAIR_INC);
+        if (game.money >= currentRepairCost) {
+            game.money -= currentRepairCost;
+            game.heater.hp = HEATER_HP_MAX;
+            game.heater.broken = false;
+            game.heater.repairCount++;
+            updateHUD();
+            updateShopUI();
+        }
+        return;
+    }
+
+    if (id === 'key') {
+        const item = UPGRADES_DATA.find(i => i.id === 'key');
+        if (game.money >= item.baseCost) {
+            game.money -= item.baseCost;
+            game.hasKey = true;
+            updateHUD();
+            updateShopUI();
+        }
+        return;
+    }
+
+    // Removed Lightbulb buy logic
+
+    const item = activeUpgrades.find(u => u.id === id);
+    if (item) {
+        if (item.level >= 10) return;
+
+        const cost = getCost(item);
+        if (game.money >= cost) {
+            game.money -= cost;
+            item.level++;
+            recalcStats();
+            updateHUD();
+            updateShopUI(); 
+        }
+    }
+};
+
+</script>
+</body>
+</html>

@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escape the Holiday House</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            background-color: transparent;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 10;
+        }
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 4px;
+            height: 4px;
+            background-color: white;
+            transform: translate(-50%, -50%);
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        #meter-container {
+            width: 300px;
+            height: 30px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #fff;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+        #cheer-meter {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff0000, #00ff00, #ffffff);
+            transition: width 0.5s;
+        }
+        #meter-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: white;
+            z-index: 20;
+            text-align: center;
+        }
+        #overlay h1 { font-size: 48px; margin-bottom: 10px; color: #ff6b6b; text-shadow: 2px 2px #000; }
+        #overlay p { font-size: 20px; margin-bottom: 30px; }
+        .btn {
+            background: #2ecc71;
+            border: none;
+            padding: 15px 30px;
+            font-size: 24px;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+            font-family: inherit;
+            border-bottom: 5px solid #27ae60;
+        }
+        .btn:active { transform: translateY(2px); border-bottom: 3px solid #27ae60; }
+        #message {
+            font-size: 24px;
+            color: #fff;
+            text-shadow: 2px 2px 0 #000;
+        }
+        #cake-warning {
+            color: yellow;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="crosshair"></div>
+<div id="ui-layer">
+    <div>
+        <div id="meter-container">
+            <div id="cheer-meter"></div>
+            <div id="meter-label">CHRISTMAS CHEER LEVEL</div>
+        </div>
+        <div style="color: white; margin-top: 10px; text-shadow: 1px 1px 1px black;">
+            You are too HEAVY to climb!<br>
+            Open Presents to lighten up. Avoid Cake.
+        </div>
+        <div id="cake-warning">ATE CAKE! JUMP REDUCED!</div>
+    </div>
+    <div id="message"></div>
+</div>
+
+<div id="overlay">
+    <h1>THE RITUAL</h1>
+    <p>You ate too much holiday food (Heavy).<br>Open Presents to restore your jump.<br>Don't eat the Cake!</p>
+    <button class="btn" id="startBtn">BEGIN RITUAL</button>
+</div>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+    // --- Game Constants & State ---
+    const BLOCK_SIZE = 10;
+    const HOUSE_WIDTH = 50; 
+    const HOUSE_HEIGHT = 40; 
+    const HOUSE_DEPTH = 50;
+    
+    // Physics
+    const GRAVITY = 500; 
+    const BASE_JUMP_FORCE = 180; // Target jump force
+    let currentJumpForce = 50; // Start VERY heavy
+    const SPEED = 110;
+    const REACH = 60;
+    
+    let moveForward = false;
+    let moveBackward = false;
+    let moveLeft = false;
+    let moveRight = false;
+    let canJump = false;
+    
+    let prevTime = performance.now();
+    let velocity = new THREE.Vector3();
+    let direction = new THREE.Vector3();
+    let camera, scene, renderer, controls;
+    let raycaster;
+    let objects = []; 
+    let worldBlocks = new Map(); 
+    let familyMembers = []; // Stores family objects
+    let snowSystem; // Particle system
+    let isLocked = false;
+    let gameActive = false;
+    let isWinning = false; // Track win sequence
+    
+    // Visuals
+    let selectionBox;
+    
+    // Mechanics
+    let cheerLevel = 0;
+    let christmasRate = 0.8; 
+    let lastChristmasSpawn = 0;
+    let miningProgress = 0;
+    let miningTarget = null;
+    let miningBlockType = null;
+    
+    let audioCtx;
+    let nextSoundTime = 0;
+
+    // --- Asset Generators ---
+    function createTexture(type) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        
+        if (type === 'wood') {
+            ctx.fillStyle = '#3e2723';
+            ctx.fillRect(0, 0, 64, 64);
+            ctx.fillStyle = '#281815';
+            for(let i=0; i<64; i+=16) {
+                ctx.fillRect(i, 0, 2, 64);
+                ctx.fillRect(i+8, 4, 2, 2);
+                ctx.fillRect(i+8, 60, 2, 2);
+            }
+        } else if (type === 'wall') {
+            ctx.fillStyle = '#5d4037'; 
+            ctx.fillRect(0, 0, 64, 64);
+            ctx.fillStyle = '#4e342e';
+            for(let y=0; y<64; y+=16) {
+                for(let x=(y%32===0?0:16); x<64; x+=32) {
+                    ctx.fillRect(x, y, 30, 14);
+                }
+            }
+        } else if (type === 'weak_wall') {
+            ctx.fillStyle = '#795548'; 
+            ctx.fillRect(0, 0, 64, 64);
+            // Light coming through cracks
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0,0); ctx.lineTo(64,64);
+            ctx.moveTo(64,0); ctx.lineTo(0,64);
+            ctx.stroke();
+            ctx.fillStyle = '#fff';
+            ctx.font = "10px monospace";
+            ctx.fillText("EXIT", 20, 35);
+        } else if (type === 'present') {
+            const colors = ['#d32f2f', '#388e3c', '#fbc02d'];
+            ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+            ctx.fillRect(0, 0, 64, 64);
+            ctx.fillStyle = '#fff'; 
+            ctx.fillRect(28, 0, 8, 64);
+            ctx.fillRect(0, 28, 64, 8);
+        } else if (type === 'leaves') {
+            ctx.fillStyle = '#1b5e20';
+            ctx.fillRect(0, 0, 64, 64);
+            ctx.fillStyle = '#2e7d32';
+            for(let i=0; i<50; i++) ctx.fillRect(Math.random()*60, Math.random()*60, 2, 4);
+        } else if (type === 'snow') {
+            ctx.fillStyle = '#e3f2fd';
+            ctx.fillRect(0,0,64,64);
+        } else if (type === 'family') {
+            ctx.fillStyle = '#ffcc80'; 
+            ctx.fillRect(0,0,64,64);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(15, 25, 8, 8);
+            ctx.fillRect(41, 25, 8, 8);
+            ctx.fillStyle = '#c62828'; 
+            ctx.beginPath(); ctx.arc(32, 45, 10, 0, Math.PI, false); ctx.fill(); // Smiling creepy
+        } else if (type === 'cake') {
+            // Delicious Cake Texture
+            ctx.fillStyle = '#fce4ec'; // Pink Frosting
+            ctx.fillRect(0,0,64,64);
+            ctx.fillStyle = '#880e4f'; // Dark Filling
+            ctx.fillRect(0, 25, 64, 5);
+            ctx.fillRect(0, 45, 64, 5);
+            ctx.fillStyle = '#e91e63'; // Strawberry on top
+            ctx.beginPath(); ctx.arc(32, 12, 10, 0, Math.PI*2); ctx.fill();
+        } else if (type === 'light_red') {
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(0,0,64,64);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(20,20,24,24);
+        } else if (type === 'light_green') {
+            ctx.fillStyle = '#00ff00';
+            ctx.fillRect(0,0,64,64);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(20,20,24,24);
+        } else if (type === 'light_yellow') {
+            ctx.fillStyle = '#ffff00';
+            ctx.fillRect(0,0,64,64);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(20,20,24,24);
+        } else if (type === 'wreath') {
+            ctx.fillStyle = '#5d4037'; // Background wall
+            ctx.fillRect(0,0,64,64);
+            ctx.fillStyle = '#1b5e20'; // Green
+            ctx.beginPath(); ctx.arc(32,32,25,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#5d4037'; // Hole
+            ctx.beginPath(); ctx.arc(32,32,10,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#ff0000'; // Berries
+            for(let i=0; i<8; i++) {
+                ctx.beginPath(); 
+                ctx.arc(32 + Math.cos(i)*18, 32 + Math.sin(i)*18, 4, 0, Math.PI*2); 
+                ctx.fill();
+            }
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter;
+        return tex;
+    }
+
+    const matWood = new THREE.MeshStandardMaterial({ map: createTexture('wood') });
+    const matWall = new THREE.MeshStandardMaterial({ map: createTexture('wall') });
+    const matWeakWall = new THREE.MeshStandardMaterial({ map: createTexture('weak_wall'), emissive: 0x222222 });
+    const matPresent = new THREE.MeshStandardMaterial({ map: createTexture('present') });
+    const matLeaves = new THREE.MeshStandardMaterial({ map: createTexture('leaves') });
+    const matSnow = new THREE.MeshStandardMaterial({ map: createTexture('snow') });
+    const matFamily = new THREE.MeshStandardMaterial({ map: createTexture('family') });
+    const matCake = new THREE.MeshStandardMaterial({ map: createTexture('cake') });
+    const matLightRed = new THREE.MeshStandardMaterial({ map: createTexture('light_red'), emissive: 0xff0000, emissiveIntensity: 0.8 });
+    const matLightGreen = new THREE.MeshStandardMaterial({ map: createTexture('light_green'), emissive: 0x00ff00, emissiveIntensity: 0.8 });
+    const matLightYellow = new THREE.MeshStandardMaterial({ map: createTexture('light_yellow'), emissive: 0xffff00, emissiveIntensity: 0.8 });
+    const matWreath = new THREE.MeshStandardMaterial({ map: createTexture('wreath') });
+
+    const DURABILITY = {
+        'wood': 50,
+        'wall': Infinity, 
+        'weak_wall': 40, // Exit
+        'present': 15,
+        'leaves': 5,
+        'snow': 4,
+        'family': 99999,
+        'cake': 10,
+        'light_red': Infinity,
+        'light_green': Infinity,
+        'light_yellow': Infinity,
+        'wreath': Infinity
+    };
+
+    // --- Init ---
+
+    function init() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a233a); // Lighter Night Blue
+
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
+        camera.rotation.order = "YXZ";
+
+        // Much brighter ambient light (Moonlight)
+        const ambientLight = new THREE.HemisphereLight( 0xddddff, 0x555566, 0.8 );
+        scene.add( ambientLight );
+
+        // Flashlight attached to camera
+        const flashLight = new THREE.PointLight(0xffffee, 0.8, 60);
+        flashLight.position.set(0, 0, 0);
+        camera.add(flashLight);
+        scene.add(camera);
+
+        // Center light for the tree (Warm glow)
+        const ptLight = new THREE.PointLight(0xffaa00, 1.2, 120);
+        ptLight.position.set(HOUSE_WIDTH*BLOCK_SIZE/2, HOUSE_HEIGHT*BLOCK_SIZE/2, HOUSE_DEPTH*BLOCK_SIZE/2);
+        ptLight.castShadow = true;
+        scene.add(ptLight);
+
+        const dirLight = new THREE.DirectionalLight(0xaaccff, 0.4);
+        dirLight.position.set(100, 150, 50);
+        scene.add(dirLight);
+
+        // UI Listeners
+        const element = document.body;
+        document.getElementById('startBtn').addEventListener('click', () => {
+            initAudio();
+            element.requestPointerLock = element.requestPointerLock || element.mozRequestPointerLock;
+            element.requestPointerLock();
+        });
+
+        document.addEventListener('pointerlockchange', pointerLockChange, false);
+        document.addEventListener('mozpointerlockchange', pointerLockChange, false);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; 
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, 0, 1), 0, REACH);
+
+        const boxGeo = new THREE.BoxGeometry(BLOCK_SIZE + 0.2, BLOCK_SIZE + 0.2, BLOCK_SIZE + 0.2);
+        const boxEdge = new THREE.EdgesGeometry(boxGeo);
+        // Changed to YELLOW for better visibility
+        const boxMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
+        selectionBox = new THREE.LineSegments(boxEdge, boxMat);
+        selectionBox.visible = false;
+        scene.add(selectionBox);
+
+        document.addEventListener('keydown', onKeyDown, false);
+        document.addEventListener('keyup', onKeyUp, false);
+        document.addEventListener('mousedown', onMouseDown, false);
+        document.addEventListener('mouseup', onMouseUp, false);
+        window.addEventListener('resize', onWindowResize, false);
+
+        controls = { enabled: false };
+        document.addEventListener('mousemove', (event) => {
+            if (!controls.enabled) return;
+            const movementX = event.movementX || 0;
+            const movementY = event.movementY || 0;
+            camera.rotation.y -= movementX * 0.002;
+            camera.rotation.x -= movementY * 0.002;
+            camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+        });
+
+        buildWorld();
+        initSnow();
+        
+        // --- NEW START POS: Other end of room ---
+        camera.position.set(HOUSE_WIDTH * BLOCK_SIZE - 40, BLOCK_SIZE * 2, HOUSE_DEPTH * BLOCK_SIZE - 40);
+        // Face the tree
+        camera.lookAt(HOUSE_WIDTH * BLOCK_SIZE / 2, BLOCK_SIZE * 5, HOUSE_DEPTH * BLOCK_SIZE / 2);
+
+        animate();
+    }
+
+    function initSnow() {
+        const particleCount = 3000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        const velocities = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            // Random positions inside house
+            positions.push(Math.random() * HOUSE_WIDTH * BLOCK_SIZE);
+            positions.push(Math.random() * HOUSE_HEIGHT * BLOCK_SIZE);
+            positions.push(Math.random() * HOUSE_DEPTH * BLOCK_SIZE);
+            
+            // Random fall speeds
+            velocities.push(0);
+            velocities.push(-10 - Math.random() * 20); // Y velocity
+            velocities.push(0);
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3)); // Custom attribute
+
+        const material = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 1.5,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        snowSystem = new THREE.Points(geometry, material);
+        scene.add(snowSystem);
+    }
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if(audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    // --- World Generation ---
+
+    function buildWorld() {
+        const center = Math.floor(HOUSE_WIDTH/2);
+        
+        // Floor & Ceiling
+        for(let x=-5; x<HOUSE_WIDTH+5; x++) {
+            for(let z=-5; z<HOUSE_DEPTH+5; z++) {
+                let inside = (x >= 0 && x < HOUSE_WIDTH && z >= 0 && z < HOUSE_DEPTH);
+                
+                if(inside) {
+                    addBlock(x, 0, z, 'wood'); 
+                    
+                    // Ceiling
+                    if (x >= center-1 && x <= center && z >= center-1 && z <= center) {
+                        // The Exit Hatch (2x2 area)
+                        addBlock(x, HOUSE_HEIGHT, z, 'weak_wall');
+                    } else {
+                        addBlock(x, HOUSE_HEIGHT, z, 'wood'); 
+                    }
+                } else {
+                    addBlock(x, 0, z, 'snow'); 
+                }
+            }
+        }
+
+        // Walls with Lights and Decorations
+        for(let x=-1; x<HOUSE_WIDTH+1; x++) {
+            for(let z=-1; z<HOUSE_DEPTH+1; z++) {
+                let inside = (x >= 0 && x < HOUSE_WIDTH && z >= 0 && z < HOUSE_DEPTH);
+                if(inside) {
+                    // Check borders
+                   let border = (x === 0 || x === HOUSE_WIDTH-1 || z === 0 || z === HOUSE_DEPTH-1);
+                   if(border) {
+                       for(let y=1; y<HOUSE_HEIGHT; y++) {
+                           // Decoration Logic
+                           let blockType = 'wall';
+                           
+                           // String Lights every 5 blocks vertically
+                           if (y % 5 === 0 && y > 1) {
+                               let pattern = (x + z + y) % 3;
+                               if(pattern === 0) blockType = 'light_red';
+                               else if(pattern === 1) blockType = 'light_green';
+                               else blockType = 'light_yellow';
+                           } 
+                           // Random Wreaths
+                           else if (Math.random() < 0.02 && y > 2 && y < HOUSE_HEIGHT-2) {
+                               blockType = 'wreath';
+                           }
+
+                           addBlock(x, y, z, blockType);
+                       }
+                   }
+                }
+            }
+        }
+
+        buildSpiralChristmasTree(center, center);
+
+        // Spawn Family in a circle around tree
+        const radius = 15;
+        const count = 12;
+        for(let i=0; i<count; i++) {
+            const angle = (i / count) * Math.PI * 2;
+            const fx = center + Math.cos(angle) * radius;
+            const fz = center + Math.sin(angle) * radius;
+            spawnFamilyMember(fx, 1, fz, angle); 
+        }
+
+        // --- SPAWN TREE FAMILY MEMBER ---
+        // Halfway up the tree
+        spawnFamilyMember(center+5, 20, center, 0);
+
+        // Random Presents
+        for(let i=0; i<40; i++) {
+            let px = Math.floor(Math.random()*(HOUSE_WIDTH-4)) + 2;
+            let pz = Math.floor(Math.random()*(HOUSE_DEPTH-4)) + 2;
+            if(Math.abs(px-center) > 8 || Math.abs(pz-center) > 8) { 
+                addBlock(px, 1, pz, 'present');
+            }
+        }
+
+        // Cake
+        for(let i=0; i<15; i++) {
+            let ex = Math.floor(Math.random()*(HOUSE_WIDTH-4)) + 2;
+            let ez = Math.floor(Math.random()*(HOUSE_DEPTH-4)) + 2;
+            if(Math.abs(ex-center) > 8 || Math.abs(ez-center) > 8) { 
+                addBlock(ex, 1, ez, 'cake');
+            }
+        }
+    }
+
+    function buildSpiralChristmasTree(cx, cz) {
+        const treeHeight = HOUSE_HEIGHT - 2;
+        
+        // Thick Trunk (2x2)
+        for(let y=1; y<treeHeight; y++) {
+             addBlock(cx, y, cz, 'wood');
+             addBlock(cx+1, y, cz, 'wood');
+             addBlock(cx, y, cz+1, 'wood');
+             addBlock(cx+1, y, cz+1, 'wood');
+        }
+
+        // Spiral Leaves - Optimized for climbing with 2x2 platforms
+        for(let y=1; y<treeHeight; y++) {
+            // Spiral math
+            const angle = y * 0.5; 
+            const radius = Math.max(3, 10 - (y * 0.15)); // Wider tree for wider room
+            
+            // Platform Center
+            const lx = Math.round(cx + Math.cos(angle) * radius);
+            const lz = Math.round(cz + Math.sin(angle) * radius);
+            
+            // Place 2x2 Platform
+            addBlock(lx, y, lz, 'leaves');
+            addBlock(lx+1, y, lz, 'leaves');
+            addBlock(lx, y, lz+1, 'leaves');
+            addBlock(lx+1, y, lz+1, 'leaves');
+            
+            // Connect to trunk with a "branch"
+            const steps = Math.ceil(radius);
+            for(let s=1; s<steps; s++) {
+                const bx = Math.round(cx + Math.cos(angle) * s);
+                const bz = Math.round(cz + Math.sin(angle) * s);
+                // Thick branch
+                addBlock(bx, y, bz, 'leaves');
+                addBlock(bx, y-1, bz, 'leaves'); // Support underneath
+            }
+            
+            // Random decorations
+            if(Math.random()>0.7) addBlock(lx, y+1, lz, 'present');
+            if(Math.random()>0.8) addBlock(lx, y+1, lz+1, 'cake');
+        }
+
+        // Star top
+        addBlock(cx, treeHeight-1, cz, 'present');
+    }
+
+    function spawnFamilyMember(sx, sy, sz, angle) {
+        const headGeo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+        const headMat = matFamily;
+        const bodyMat = matPresent;
+        
+        const group = new THREE.Group();
+        
+        const bodyMesh = new THREE.Mesh(headGeo, bodyMat);
+        bodyMesh.position.y = 0;
+        bodyMesh.castShadow = true;
+        group.add(bodyMesh);
+
+        const headMesh = new THREE.Mesh(headGeo, headMat);
+        headMesh.position.y = BLOCK_SIZE;
+        headMesh.castShadow = true;
+        group.add(headMesh);
+
+        group.position.set(sx * BLOCK_SIZE, sy * BLOCK_SIZE, sz * BLOCK_SIZE);
+        scene.add(group);
+
+        familyMembers.push({
+            mesh: group,
+            angle: angle,
+            radius: 15 + Math.random() * 4,
+            speed: 0.5 + Math.random() * 0.5,
+            hopOffset: Math.random() * 100,
+            baseY: sy * BLOCK_SIZE // Store base Y for jumping logic
+        });
+    }
+
+    function addBlock(x, y, z, type) {
+        x = Math.round(x); y = Math.round(y); z = Math.round(z);
+        const key = `${x},${y},${z}`;
+        if(worldBlocks.has(key)) return;
+
+        let mat = matWood;
+        if(type === 'wall') mat = matWall;
+        if(type === 'weak_wall') mat = matWeakWall;
+        if(type === 'present') mat = matPresent;
+        if(type === 'leaves') mat = matLeaves;
+        if(type === 'snow') mat = matSnow;
+        if(type === 'family') mat = matFamily;
+        if(type === 'cake') mat = matCake;
+        if(type === 'light_red') mat = matLightRed;
+        if(type === 'light_green') mat = matLightGreen;
+        if(type === 'light_yellow') mat = matLightYellow;
+        if(type === 'wreath') mat = matWreath;
+
+        const geo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(x * BLOCK_SIZE, y * BLOCK_SIZE + (BLOCK_SIZE/2), z * BLOCK_SIZE);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        mesh.userData = { type: type, gridX: x, gridY: y, gridZ: z };
+        
+        scene.add(mesh);
+        objects.push(mesh);
+        worldBlocks.set(key, mesh);
+    }
+
+    function removeBlock(mesh) {
+        if (!mesh) return;
+        if (mesh.userData.type === 'family' || mesh.userData.type === 'wall' || 
+            mesh.userData.type === 'light_red' || mesh.userData.type === 'light_green' || 
+            mesh.userData.type === 'light_yellow' || mesh.userData.type === 'wreath') return; 
+        
+        // --- CAKE LOGIC ---
+        if (mesh.userData.type === 'cake') {
+            currentJumpForce -= 20; // HEAVY PENALTY
+            if (currentJumpForce < 50) currentJumpForce = 50; // Minimum jump
+            const msg = document.getElementById('message');
+            msg.innerText = "ATE CAKE! YOU FEEL HEAVIER...";
+            msg.style.color = 'yellow';
+            
+            // Show warning
+            document.getElementById('cake-warning').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('cake-warning').style.display = 'none';
+                msg.innerText = "";
+            }, 3000);
+        }
+
+        // --- PRESENT LOGIC (Restore Jump) ---
+        if (mesh.userData.type === 'present') {
+            // If we are heavy (jump force is below base), opening presents helps
+            if (currentJumpForce < BASE_JUMP_FORCE) {
+                currentJumpForce += 20; // Recover jump
+                if (currentJumpForce > BASE_JUMP_FORCE) currentJumpForce = BASE_JUMP_FORCE;
+                
+                const msg = document.getElementById('message');
+                msg.innerText = "OPENED PRESENT! WEIGHT LIFTED!";
+                msg.style.color = '#2ecc71'; // Green
+                setTimeout(() => {
+                    if(msg.innerText === "OPENED PRESENT! WEIGHT LIFTED!") msg.innerText = "";
+                }, 2000);
+            }
+        }
+
+        const key = `${mesh.userData.gridX},${mesh.userData.gridY},${mesh.userData.gridZ}`;
+        scene.remove(mesh);
+        objects = objects.filter(o => o !== mesh);
+        worldBlocks.delete(key);
+        mesh.geometry.dispose();
+    }
+
+    function pointerLockChange() {
+        if (document.pointerLockElement === document.body || document.mozPointerLockElement === document.body) {
+            controls.enabled = true;
+            isLocked = true;
+            gameActive = true;
+            document.getElementById('overlay').style.display = 'none';
+        } else {
+            controls.enabled = false;
+            isLocked = false;
+            gameActive = false;
+            document.getElementById('overlay').style.display = 'flex';
+            document.getElementById('startBtn').innerText = "RESUME";
+        }
+    }
+
+    function onKeyDown(event) {
+        switch (event.code) {
+            case 'ArrowUp': case 'KeyW': moveForward = true; break;
+            case 'ArrowLeft': case 'KeyA': moveLeft = true; break;
+            case 'ArrowDown': case 'KeyS': moveBackward = true; break;
+            case 'ArrowRight': case 'KeyD': moveRight = true; break;
+            case 'Space': if (canJump) velocity.y += currentJumpForce; canJump = false; break; // Uses current force
+        }
+    }
+
+    function onKeyUp(event) {
+        switch (event.code) {
+            case 'ArrowUp': case 'KeyW': moveForward = false; break;
+            case 'ArrowLeft': case 'KeyA': moveLeft = false; break;
+            case 'ArrowDown': case 'KeyS': moveBackward = false; break;
+            case 'ArrowRight': case 'KeyD': moveRight = false; break;
+        }
+    }
+
+    function onMouseDown(event) {
+        if(!isLocked) return;
+        if(event.button === 0) {
+            isMining = true;
+            updateRaycast();
+            if(selectionBox.visible && miningTarget) {
+                animateMining(miningTarget);
+            }
+        }
+    }
+
+    function onMouseUp() {
+        isMining = false;
+        if (miningTarget) miningTarget.scale.setScalar(1);
+        miningTarget = null;
+        miningProgress = 0;
+    }
+
+    function updateRaycast() {
+        raycaster.setFromCamera( new THREE.Vector2(0,0), camera );
+        const intersects = raycaster.intersectObjects( objects );
+        
+        if(intersects.length > 0) {
+            miningTarget = intersects[0].object;
+            miningBlockType = miningTarget.userData.type;
+            
+            if(DURABILITY[miningBlockType] === Infinity) {
+                selectionBox.material.color.setHex(0xff0000); // Red if unbreakable
+            } else {
+                selectionBox.material.color.setHex(0xffff00); // Yellow if breakable
+            }
+
+            selectionBox.visible = true;
+            selectionBox.position.copy(miningTarget.position);
+        } else {
+            selectionBox.visible = false;
+            miningTarget = null;
+        }
+    }
+
+    function animateMining(target) {
+        if(!isMining || target !== miningTarget) return;
+        
+        if(DURABILITY[miningBlockType] === Infinity) return; 
+
+        miningProgress++;
+        target.scale.setScalar(1 - (Math.random() * 0.15));
+        
+        const required = DURABILITY[miningBlockType] || 20;
+
+        if(miningProgress >= required) {
+            removeBlock(target);
+            selectionBox.visible = false;
+            miningTarget = null;
+            miningProgress = 0;
+        } else {
+            requestAnimationFrame(() => animateMining(target));
+        }
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function playDystopianChristmasSound() {
+        if (!audioCtx || !gameActive) return;
+
+        // Discordant Jingle Bells
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        const freq = 800 + Math.random() * 800; 
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        osc.type = Math.random() > 0.5 ? 'sine' : 'triangle';
+        
+        gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
+    }
+
+    // --- Family AI: Dancing ---
+    function updateFamily(delta, time) {
+        const centerX = HOUSE_WIDTH * BLOCK_SIZE / 2;
+        const centerZ = HOUSE_DEPTH * BLOCK_SIZE / 2;
+
+        familyMembers.forEach(fam => {
+            // Update Angle
+            fam.angle += fam.speed * delta;
+            
+            // Calculate new X/Z
+            // If up in tree (baseY > 10), keep radius smaller to stay on branches?
+            // For now, simplify: Ground family circles wide. Tree family circles small or stays put?
+            
+            let radius = fam.radius;
+            if (fam.baseY > BLOCK_SIZE * 5) {
+                // Tree dweller logic: Hop in place or small circle
+                radius = 4; // Near trunk
+            }
+
+            const fx = centerX + Math.cos(fam.angle) * (radius * BLOCK_SIZE);
+            const fz = centerZ + Math.sin(fam.angle) * (radius * BLOCK_SIZE);
+            
+            // Hop animation relative to BASE Y
+            const hopY = fam.baseY + Math.abs(Math.sin((time/200) + fam.hopOffset)) * 5;
+
+            fam.mesh.position.set(fx, hopY, fz);
+            
+            // Look at center (Tree)
+            fam.mesh.lookAt(centerX, hopY, centerZ);
+
+            // --- COLLISION CHECK WITH PLAYER ---
+            if (fam.mesh.position.distanceTo(camera.position) < BLOCK_SIZE * 2.5) {
+                // HIT!
+                cheerLevel += 50 * delta; // Rapidly increase cheer
+                document.getElementById('message').innerText = "FAMILY HUG! TOO MUCH CHEER!";
+                document.getElementById('message').style.color = "red";
+                if(cheerLevel >= 100) cheerLevel = 100;
+                document.getElementById('cheer-meter').style.width = cheerLevel + '%';
+            }
+        });
+    }
+
+    function updateSnow(delta) {
+        if(!snowSystem) return;
+        const positions = snowSystem.geometry.attributes.position.array;
+        
+        for(let i=0; i<positions.length; i+=3) {
+            positions[i+1] -= 20 * delta; // Fall down
+            
+            // Reset if hits floor
+            if(positions[i+1] < 0) {
+                positions[i+1] = HOUSE_HEIGHT * BLOCK_SIZE;
+            }
+        }
+        snowSystem.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // --- Physics & Game Loop ---
+
+    function checkCollision(newPos) {
+        const playerWidth = 3;
+        
+        const pX = Math.round(newPos.x / BLOCK_SIZE);
+        const pY = Math.round(newPos.y / BLOCK_SIZE);
+        const pZ = Math.round(newPos.z / BLOCK_SIZE);
+        
+        for(let x = pX-1; x <= pX+1; x++) {
+            for(let y = pY-1; y <= pY+2; y++) {
+                for(let z = pZ-1; z <= pZ+1; z++) {
+                    const key = `${x},${y},${z}`;
+                    if(worldBlocks.has(key)) {
+                        const block = worldBlocks.get(key);
+                        const bMinX = block.position.x - BLOCK_SIZE/2;
+                        const bMaxX = block.position.x + BLOCK_SIZE/2;
+                        const bMinY = block.position.y - BLOCK_SIZE/2;
+                        const bMaxY = block.position.y + BLOCK_SIZE/2;
+                        const bMinZ = block.position.z - BLOCK_SIZE/2;
+                        const bMaxZ = block.position.z + BLOCK_SIZE/2;
+
+                        const pMinX = newPos.x - playerWidth;
+                        const pMaxX = newPos.x + playerWidth;
+                        const pMinY = newPos.y - 12; 
+                        const pMaxY = newPos.y + 4; 
+                        const pMinZ = newPos.z - playerWidth;
+                        const pMaxZ = newPos.z + playerWidth;
+
+                        if (pMinX < bMaxX && pMaxX > bMinX &&
+                            pMinY < bMaxY && pMaxY > bMinY &&
+                            pMinZ < bMaxZ && pMaxZ > bMinZ) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    function spreadChristmas(dt) {
+        if(cheerLevel >= 100) return;
+
+        lastChristmasSpawn += dt;
+        if(lastChristmasSpawn > christmasRate) {
+            lastChristmasSpawn = 0;
+            for(let i=0; i<5; i++) {
+                let rx = Math.floor(Math.random() * (HOUSE_WIDTH));
+                let rz = Math.floor(Math.random() * (HOUSE_DEPTH));
+                let ry = 1;
+                let key = `${rx},${ry},${rz}`;
+                if(!worldBlocks.has(key)) {
+                    const dist = new THREE.Vector3(rx*BLOCK_SIZE, ry*BLOCK_SIZE, rz*BLOCK_SIZE).distanceTo(camera.position);
+                    if(dist > 30) {
+                            addBlock(rx, ry, rz, 'present');
+                            break;
+                    }
+                }
+            }
+        }
+        
+        cheerLevel += dt * 0.1; 
+        if(cheerLevel > 100) cheerLevel = 100;
+        document.getElementById('cheer-meter').style.width = cheerLevel + '%';
+        
+        if(cheerLevel >= 100) endGame(false);
+    }
+
+    function checkWin() {
+        const y = camera.position.y;
+        // Check if above ceiling height
+        if (y > HOUSE_HEIGHT * BLOCK_SIZE && !isWinning) {
+            isWinning = true;
+        }
+    }
+
+    function endGame(won) {
+        gameActive = false;
+        controls.enabled = false;
+        document.exitPointerLock();
+        isWinning = false;
+        const overlay = document.getElementById('overlay');
+        const h1 = overlay.querySelector('h1');
+        const p = overlay.querySelector('p');
+        const btn = document.getElementById('startBtn');
+        
+        overlay.style.display = 'flex';
+        
+        if(won) {
+            h1.innerText = "FREEDOM!";
+            h1.style.color = "#2ecc71";
+            p.innerText = "Now free from the family Christmas party - enjoy and relax your well-deserved time off!";
+            btn.innerText = "PLAY AGAIN";
+        } else {
+            h1.innerText = "CONSUMED!";
+            h1.style.color = "#e74c3c";
+            p.innerText = "The Holiday Spirit has taken you.";
+            btn.innerText = "TRY AGAIN";
+        }
+        btn.onclick = () => location.reload();
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        const time = performance.now();
+        const delta = (time - prevTime) / 1000;
+        prevTime = time;
+
+        if (isWinning) {
+             // Simple, fast fly away
+             camera.position.y += delta * 400; // Speed up
+             
+             // Look down at the center of the house
+             const centerX = HOUSE_WIDTH * BLOCK_SIZE / 2;
+             const centerZ = HOUSE_DEPTH * BLOCK_SIZE / 2;
+             
+             camera.lookAt(centerX, 0, centerZ);
+             
+             // Trigger end screen quickly
+             if(camera.position.y > (HOUSE_HEIGHT * BLOCK_SIZE) + 1000) {
+                 endGame(true);
+             }
+             renderer.render(scene, camera);
+             return;
+        }
+
+        if (controls.enabled && gameActive) {
+            spreadChristmas(delta);
+            checkWin();
+            updateFamily(delta, time);
+            updateSnow(delta);
+
+            if (time > nextSoundTime) {
+                playDystopianChristmasSound();
+                nextSoundTime = time + 200 + Math.random() * 600; 
+            }
+
+            if (!isMining) updateRaycast();
+
+            velocity.x -= velocity.x * 10.0 * delta;
+            velocity.z -= velocity.z * 10.0 * delta;
+            velocity.y -= GRAVITY * delta;
+
+            const yaw = camera.rotation.y;
+            const forwardDir = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+            const rightDir = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+
+            if (moveForward) velocity.add(forwardDir.multiplyScalar(SPEED * delta * 10));
+            if (moveBackward) velocity.sub(forwardDir.multiplyScalar(SPEED * delta * 10));
+            if (moveRight) velocity.add(rightDir.multiplyScalar(SPEED * delta * 10)); 
+            if (moveLeft) velocity.sub(rightDir.multiplyScalar(SPEED * delta * 10));
+
+            let pPos = camera.position.clone();
+            pPos.x += velocity.x * delta;
+            if(!checkCollision(pPos)) camera.position.x = pPos.x;
+
+            pPos = camera.position.clone();
+            pPos.z += velocity.z * delta;
+            if(!checkCollision(pPos)) camera.position.z = pPos.z;
+
+            pPos = camera.position.clone();
+            pPos.y += velocity.y * delta;
+            if(checkCollision(pPos)) {
+                velocity.y = Math.max(0, velocity.y);
+                canJump = true;
+            } else {
+                camera.position.y += velocity.y * delta;
+                if(camera.position.y < BLOCK_SIZE) { 
+                    velocity.y = 0; 
+                    camera.position.y = BLOCK_SIZE; 
+                    canJump = true; 
+                }
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    init();
+
+</script>
+</body>
+</html>
